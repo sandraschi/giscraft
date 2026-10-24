@@ -249,7 +249,29 @@ impl eframe::App for QgisCraftApp {
     }
 }
 
+/// Headless parity path for CI: open/seed/list the project DB, print a
+/// one-line summary, exit 0. Opens no window. Mirrors the devices-app pattern.
+fn smoke() {
+    let app = QgisCraftApp::open_with_seed();
+    let total_features: u64 = app.layers.iter().map(|l| l.features).sum();
+    println!(
+        "qgiscraft smoke: {} layers, {} features, db={}",
+        app.layers.len(),
+        total_features,
+        app.db_path
+    );
+    for layer in &app.layers {
+        println!(
+            "  layer {} visible={} features={}",
+            layer.id, layer.visible, layer.features
+        );
+    }
+}
+
 fn main() {
+    if std::env::args().any(|arg| arg == "--smoke") {
+        return smoke();
+    }
     let viewport = egui::ViewportBuilder::default()
         .with_title("qgiscraft")
         .with_inner_size([1280.0, 860.0])

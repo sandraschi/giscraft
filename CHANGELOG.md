@@ -1,5 +1,10 @@
 # Changelog - qgiscraft-mcp
 
+## 2026-10-24 - Phase 0.4: GUI proven + live end-to-end
+- `qgiscraft-app --smoke`: headless open/seed/list proof (no window, CI-safe); `just run-app-smoke`.
+- Live verified by hand: Photon `Stephansplatz` -> 3 real hits; Overpass `amenity=pharmacy` Innere Stadt -> 29 ingested, read back via `features.list` and `layer.list` (features: 29).
+- Gates green: 28 tests, clippy -D warnings, fmt, xtask ci.
+
 ## 2026-10-24 - Phase 0.3: ingest + DB-backed app
 - Overpass `--ingest` writes live hits into the project DB (`db` param, slug layer id, replace semantics); dry-run + ingest is a typed error.
 - New `features.list` tool + CLI (9 tools total); `layer.list` carries `visible` + per-layer feature counts.

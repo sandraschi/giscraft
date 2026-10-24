@@ -41,6 +41,10 @@ run-cli:
 run-app:
     $env:Path = "$env:USERPROFILE\\.cargo\\bin;$env:Path"; cargo run -p qgiscraft-app --
 
+# Headless GUI-path proof: opens/seeds/lists the project DB, no window
+run-app-smoke:
+    $env:Path = "$env:USERPROFILE\\.cargo\\bin;$env:Path"; cargo run -p qgiscraft-app -- --smoke
+
 # Production build (GUI + MCP binaries)
 build-release:
     $env:Path = "$env:USERPROFILE\\.cargo\\bin;$env:Path"; cargo build --release --workspace
