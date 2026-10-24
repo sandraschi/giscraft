@@ -9,6 +9,7 @@
 #![deny(clippy::todo)]
 
 use eframe::egui;
+use qgiscraft_core::control;
 use qgiscraft_core::tiles;
 use qgiscraft_core::triangulate;
 use qgiscraft_store as store;
@@ -38,6 +39,8 @@ struct QgisCraftApp {
     show_about: bool,
     show_settings: bool,
     textures: HashMap<(u8, i64, i64), egui::TextureHandle>,
+    control_rx: Option<std::sync::mpsc::Receiver<control::ControlRequest>>,
+    last_rect: Option<egui::Rect>,
 }
 
 /// Pixels per world at zoom 0. Float zoom behaves like a slippy map:
@@ -117,7 +120,9 @@ fn high_contrast_dark() -> egui::Visuals {
 }
 
 impl QgisCraftApp {
-    fn open_with_seed() -> Self {
+    fn open_with_seed(
+        control_rx: Option<std::sync::mpsc::Receiver<control::ControlRequest>>,
+    ) -> Self {
         let db_path = store::default_db_path().to_string_lossy().to_string();
         let mut app = Self {
             db_path,
@@ -136,6 +141,8 @@ impl QgisCraftApp {
             show_about: false,
             show_settings: false,
             textures: HashMap::new(),
+            control_rx,
+            last_rect: None,
         };
         // Seed an empty project the way QGIS opens with a default basemap.
         match store::open_default() {
@@ -398,12 +405,196 @@ impl QgisCraftApp {
 
 impl Default for QgisCraftApp {
     fn default() -> Self {
-        Self::open_with_seed()
+        Self::open_with_seed(None)
+    }
+}
+
+impl QgisCraftApp {
+    /// Poll the control channel (called every frame when `--control` runs).
+    /// Drains first, executes after, so no borrow of self overlaps the queue.
+    fn poll_control(&mut self) {
+        let mut pending = Vec::new();
+        if let Some(rx) = self.control_rx.as_ref() {
+            while let Ok(req) = rx.try_recv() {
+                let control::ControlRequest {
+                    method,
+                    params,
+                    respond,
+                    ..
+                } = req;
+                pending.push((method, params, respond));
+            }
+        }
+        for (method, params, respond) in pending {
+            let reply = self.execute_control(method.as_str(), &params);
+            let _ = respond.send(reply);
+        }
+    }
+
+    /// Execute one validated control request against live app state.
+    /// Pure dispatch: every arm returns data, never panics.
+    fn execute_control(&mut self, method: &str, params: &serde_json::Value) -> serde_json::Value {
+        let str_param = |key: &str| {
+            params
+                .get(key)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
+        let opt_str = |key: &str| {
+            params
+                .get(key)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        };
+        match method {
+            "project.status" => serde_json::json!({
+                "db": self.db_path,
+                "crs": "EPSG:3857",
+                "layers": self.layers.len(),
+                "center": [self.center_lng, self.center_lat],
+                "zoom": self.zoom,
+                "selected": self.selected,
+            }),
+            "layer.add" => {
+                let id = str_param("id");
+                let name = str_param("name");
+                if id.trim().is_empty() || name.trim().is_empty() {
+                    return serde_json::json!({"error": "invalid params: id and name required"});
+                }
+                let layer = store::StoredLayer::new(
+                    id,
+                    name,
+                    opt_str("source"),
+                    opt_str("geom_type"),
+                    opt_str("crs"),
+                );
+                match store::open_default().and_then(|c| store::add_layer(&c, &layer)) {
+                    Ok(()) => {
+                        self.refresh();
+                        serde_json::json!({"added": layer.id})
+                    }
+                    Err(e) => serde_json::json!({"error": e.to_string()}),
+                }
+            }
+            "layer.list" => match store::open_default() {
+                Ok(conn) => match store::list_layers(&conn) {
+                    Ok(layers) => {
+                        let counts = store::feature_counts(&conn).unwrap_or_default();
+                        let rows: Vec<serde_json::Value> = layers
+                            .into_iter()
+                            .map(|l| {
+                                let n = counts
+                                    .iter()
+                                    .find(|(id, _)| *id == l.id)
+                                    .map(|(_, n)| *n)
+                                    .unwrap_or(0);
+                                serde_json::json!({"id": l.id, "name": l.name, "visible": l.visible, "features": n})
+                            })
+                            .collect();
+                        serde_json::json!({"count": rows.len(), "layers": rows})
+                    }
+                    Err(e) => serde_json::json!({"error": e.to_string()}),
+                },
+                Err(e) => serde_json::json!({"error": e.to_string()}),
+            },
+            "layer.remove" => {
+                let id = str_param("id");
+                if id.trim().is_empty() {
+                    return serde_json::json!({"error": "invalid params: id required"});
+                }
+                match store::open_default().and_then(|c| store::remove_layer(&c, id.as_str())) {
+                    Ok(removed) => {
+                        if removed {
+                            self.selected = None;
+                            self.refresh();
+                        }
+                        serde_json::json!({"id": id, "removed": removed})
+                    }
+                    Err(e) => serde_json::json!({"error": e.to_string()}),
+                }
+            }
+            "ui.inspect" => {
+                let canvas = self
+                    .last_rect
+                    .map(|r| serde_json::json!({"w": r.width(), "h": r.height()}));
+                serde_json::json!({
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "center": [self.center_lng, self.center_lat],
+                    "zoom": self.zoom,
+                    "selected": self.selected,
+                    "layers": self.layers.len(),
+                    "db": self.db_path,
+                    "canvas": canvas,
+                })
+            }
+            "map.fit" => {
+                let only = opt_str("layer_id");
+                self.fit_only = only.filter(|s| !s.trim().is_empty());
+                self.fit_requested = true;
+                serde_json::json!({"queued": true})
+            }
+            "map.render" => {
+                let w = params
+                    .get("width")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|n| u32::try_from(n).ok())
+                    .unwrap_or(1280)
+                    .clamp(64, 2048);
+                let h = params
+                    .get("height")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|n| u32::try_from(n).ok())
+                    .unwrap_or(860)
+                    .clamp(64, 2048);
+                let with_tiles = params
+                    .get("tiles")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                match store::open_default() {
+                    Ok(conn) => {
+                        let layers = store::list_layers(&conn).unwrap_or_default();
+                        let feats = store::list_features(&conn, None).unwrap_or_default();
+                        let rows: Vec<LayerRow> = layers
+                            .into_iter()
+                            .map(|l| {
+                                let n = store::feature_counts(&conn)
+                                    .unwrap_or_default()
+                                    .iter()
+                                    .find(|(id, _)| *id == l.id)
+                                    .map(|(_, n)| *n)
+                                    .unwrap_or(0);
+                                LayerRow {
+                                    id: l.id,
+                                    name: l.name,
+                                    visible: l.visible,
+                                    features: n,
+                                }
+                            })
+                            .collect();
+                        match render_preview(&feats, &rows, w, h, with_tiles) {
+                            Ok(bytes) => {
+                                let mut path = std::env::temp_dir();
+                                path.push(format!("qgiscraft-control-{}.bmp", std::process::id()));
+                                match std::fs::write(&path, &bytes) {
+                                    Ok(()) => serde_json::json!({"path": path.to_string_lossy()}),
+                                    Err(e) => serde_json::json!({"error": format!("write: {e}")}),
+                                }
+                            }
+                            Err(e) => serde_json::json!({"error": e}),
+                        }
+                    }
+                    Err(e) => serde_json::json!({"error": e.to_string()}),
+                }
+            }
+            _ => serde_json::json!({"error": format!("unknown method: {method}")}),
+        }
     }
 }
 
 impl eframe::App for QgisCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.poll_control();
         // Shortcuts: F5 refresh, Delete removes selection, Ctrl+Plus/Minus/0 zoom.
         if ui.input(|input| input.key_pressed(egui::Key::F5)) {
             self.refresh();
@@ -708,6 +899,7 @@ impl eframe::App for QgisCraftApp {
             let (resp, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
             let rect = resp.rect;
+            self.last_rect = Some(rect);
             painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(0x05, 0x05, 0x07));
             if self.fit_requested {
                 self.fit_requested = false;
@@ -1251,7 +1443,7 @@ fn render_preview(
 /// one-line summary, exit 0. Opens no window. Also renders a BMP map
 /// preview next to the DB temp dir so windowless runs can see the map.
 fn smoke() {
-    let app = QgisCraftApp::open_with_seed();
+    let app = QgisCraftApp::open_with_seed(None);
     let total_features: u64 = app.layers.iter().map(|l| l.features).sum();
     println!(
         "qgiscraft smoke: {} layers, {} features, db={}",
@@ -1276,10 +1468,44 @@ fn smoke() {
     }
 }
 
+fn control_port_from_args() -> Option<u16> {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--control" {
+            if let Some(port) = args.next() {
+                if let Ok(port) = port.parse::<u16>() {
+                    if port != 0 {
+                        return Some(port);
+                    }
+                }
+            }
+            return None;
+        }
+    }
+    std::env::var("QGISCRAFT_CONTROL_PORT")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u16>().ok())
+        .filter(|port| *port != 0)
+}
+
 fn main() {
     if std::env::args().any(|arg| arg == "--smoke") {
         return smoke();
     }
+    let control_port = control_port_from_args();
+    let (control_tx, control_rx) = std::sync::mpsc::channel();
+    if let Some(port) = control_port {
+        match std::net::TcpListener::bind(format!("127.0.0.1:{port}")) {
+            Ok(listener) => {
+                eprintln!(
+                    "qgiscraft control listening on 127.0.0.1:{port} (no auth: local use only)"
+                );
+                std::thread::spawn(move || control::serve(listener, control_tx));
+            }
+            Err(e) => eprintln!("control bind failed (continuing without): {e}"),
+        }
+    }
+    let control_rx = control_port.map(|_| control_rx);
     let viewport = egui::ViewportBuilder::default()
         .with_title("qgiscraft")
         .with_inner_size([1280.0, 860.0])
@@ -1291,9 +1517,9 @@ fn main() {
     let result = eframe::run_native(
         "qgiscraft",
         options,
-        Box::new(|cc| {
+        Box::new(move |cc| {
             cc.egui_ctx.set_visuals(high_contrast_dark());
-            Ok(Box::new(QgisCraftApp::open_with_seed()))
+            Ok(Box::new(QgisCraftApp::open_with_seed(control_rx)))
         }),
     );
     if let Err(e) = result {

@@ -1,6 +1,11 @@
 # Changelog - qgiscraft-mcp
 
-## 2026-10-24 - Phase 1.3: contrast + settings
+## 2026-10-24 - Phase 2.0: control channel (`--control` / `mcp --connect`)
+- App serves JSON-lines on 127.0.0.1 (`--control PORT`, `QGISCRAFT_CONTROL_PORT`): 7 methods (project.status, layer.add/list/remove, ui.inspect, map.fit, map.render), error+close on garbage, 4MB cap, 16-conn cap, no auth.
+- `mcp --connect PORT` forwards the 4 DB-touching tools to the live app (single writer); network tools stay local.
+- `core::control` owns framing/validation/client; app owns execution; live TCP tests (stub executor + garbage-closes-connection).
+- `docs/control-protocol.md` mirrors the storytold contract.
+- Gates green: 61 tests, clippy -D warnings, fmt, xtask ci.
 - No grey on black: full-white body text (`override_text_color`), widget strokes, canvas frame, attribution; near-black surfaces kept.
 - Settings menu: Configuration window shows effective endpoints (DB, tiles template, Photon, Overpass) + env override names; new `QGISCRAFT_{TILES,PHOTON,OVERPASS}_URL` overrides in core (offline-tested template expansion).
 - Gates green: 56 tests, clippy -D warnings, fmt, xtask ci.

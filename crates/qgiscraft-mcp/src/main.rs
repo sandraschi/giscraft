@@ -8,6 +8,7 @@
 #![deny(clippy::todo)]
 
 use clap::{Parser, Subcommand};
+use qgiscraft_core::control;
 use qgiscraft_core::{dispatch, Command};
 use qgiscraft_store as store;
 use serde_json::{json, Value};
@@ -115,8 +116,12 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Run the MCP server over stdio (logs on stderr, JSON-RPC on stdout)
-    Mcp,
+    /// Run the MCP server over stdio (logs on stderr, JSON-RPC on stdout).
+    /// With --connect PORT, the DB-touching tools run in the live app.
+    Mcp {
+        #[arg(long)]
+        connect: Option<u16>,
+    },
 }
 
 /// One shared runtime. A failed build is a fatal startup error (exit 1).
@@ -137,6 +142,24 @@ fn run(cmd: Command) -> Value {
 
 /// L2 persistence owner: core dispatch validates, SQLite stores.
 /// `db=None` resolves to `$QGISCRAFT_DB` or `./qgiscraft.db`.
+/// Forward one tool call to the live app over the control channel.
+/// Returns the app's `result` verbatim, or a typed error object.
+fn forward_control(port: u16, method: &str, params: Value) -> Value {
+    match control::roundtrip(port, &Value::Null, method, &params) {
+        Ok(reply) => match reply.get("ok").and_then(|v| v.as_bool()) {
+            Some(true) => reply.get("result").cloned().unwrap_or(Value::Null),
+            _ => {
+                let err = reply
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("control error");
+                serde_json::json!({"error": err.to_string(), "op": method})
+            }
+        },
+        Err(e) => serde_json::json!({"error": e, "op": method}),
+    }
+}
+
 fn layer_add(
     db: Option<&str>,
     id: &str,
@@ -312,7 +335,20 @@ fn str_arg(args: &Value, key: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-fn call_tool(name: &str, args: &Value) -> Value {
+fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
+    // Connected mode: the 4 DB-touching tools run in the LIVE app instead of
+    // the local headless path, so there is exactly one writer. Everything
+    // else (network tools, feature reads, export) stays local.
+    if let Some(port) = connect {
+        let forward = matches!(
+            name,
+            "project.status" | "layer.add" | "layer.list" | "layer.remove"
+        );
+        if forward {
+            let result = forward_control(port, name, args.clone());
+            return json!({"content": [{"type": "text", "text": result.to_string()}]});
+        }
+    }
     let result = match name {
         "status" => run(Command::Status),
         "project.status" => run(Command::ProjectStatus),
@@ -422,8 +458,13 @@ fn call_tool(name: &str, args: &Value) -> Value {
 }
 
 /// Minimal MCP 2024-11-05 server over stdio. Line-delimited JSON-RPC.
-fn run_mcp_stdio() {
-    eprintln!("qgiscraft-mcp: MCP server listening on stdio");
+/// With `connect`, the DB-touching tools run in the live app instead.
+fn run_mcp_stdio(connect: Option<u16>) {
+    if let Some(port) = connect {
+        eprintln!("qgiscraft-mcp: MCP server on stdio, connected to app 127.0.0.1:{port}");
+    } else {
+        eprintln!("qgiscraft-mcp: MCP server listening on stdio");
+    }
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
     for line in stdin.lock().lines() {
@@ -464,7 +505,7 @@ fn run_mcp_stdio() {
                 let params = req.get("params").cloned().unwrap_or(json!({}));
                 let tname = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let targs = params.get("arguments").cloned().unwrap_or(json!({}));
-                Some(call_tool(tname, &targs))
+                Some(call_tool(tname, &targs, connect))
             }
             "ping" => Some(json!({})),
             _ => {
@@ -595,7 +636,7 @@ fn main() {
             json,
             "features.list",
         ),
-        Commands::Mcp => run_mcp_stdio(),
+        Commands::Mcp { connect } => run_mcp_stdio(connect),
     }
 }
 
@@ -616,7 +657,7 @@ mod tests {
 
     #[test]
     fn unknown_tool_becomes_error_content_not_panic() {
-        let result = call_tool("nope.missing", &json!({}));
+        let result = call_tool("nope.missing", &json!({}), None);
         let text = result
             .get("content")
             .and_then(|c| c.as_array())
@@ -629,7 +670,7 @@ mod tests {
 
     #[test]
     fn layer_add_empty_id_is_typed_error() {
-        let result = call_tool("layer.add", &json!({"id": "", "name": "x"}));
+        let result = call_tool("layer.add", &json!({"id": "", "name": "x"}), None);
         assert!(content_text(&result).contains("invalid input"));
     }
 
@@ -680,6 +721,7 @@ mod tests {
         let result = call_tool(
             "overpass.query",
             &json!({"key": "amenity", "value": "pharmacy"}),
+            None,
         );
         let text = content_text(&result);
         assert!(text.contains("amenity"));
@@ -691,6 +733,7 @@ mod tests {
         let result = call_tool(
             "overpass.query",
             &json!({"key": "amenity\";", "value": "x"}),
+            None,
         );
         let text = content_text(&result);
         assert!(text.contains("invalid input"));
@@ -701,6 +744,7 @@ mod tests {
         let result = call_tool(
             "overpass.query",
             &json!({"key": "amenity", "value": "pharmacy", "ingest": true}),
+            None,
         );
         assert!(content_text(&result).contains("ingest requires live=true"));
     }
@@ -725,8 +769,69 @@ mod tests {
     }
 
     #[test]
+    fn connected_mode_forwards_to_live_app() {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+        let port = match listener.local_addr() {
+            Ok(a) => a.port(),
+            Err(_) => return,
+        };
+        std::thread::spawn(move || {
+            let (mut stream, _) = match listener.accept() {
+                Ok(v) => v,
+                Err(_) => return,
+            };
+            let mut reader = match stream.try_clone() {
+                Ok(s) => BufReader::new(s),
+                Err(_) => return,
+            };
+            let mut line = String::new();
+            if reader.read_line(&mut line).is_err() {
+                return;
+            }
+            let req: Value = serde_json::from_str(line.trim()).unwrap_or(Value::Null);
+            let id = req.get("id").cloned().unwrap_or(Value::Null);
+            let resp = serde_json::json!({"id": id, "ok": true, "result": {"count": 3}});
+            if let Ok(text) = serde_json::to_string(&resp) {
+                let _ = writeln!(stream, "{text}");
+                let _ = stream.flush();
+            }
+        });
+        // With connect=Some the result must come from the stub app even
+        // though the local DB path does not exist.
+        let result = call_tool(
+            "layer.list",
+            &serde_json::json!({"db": "no-such-db-xyz.db"}),
+            Some(port),
+        );
+        let text = content_text(&result);
+        assert!(text.contains("\"count\":3"), "got: {text}");
+    }
+
+    #[test]
+    fn connected_mode_unreachable_is_typed_error() {
+        let port = match std::net::TcpListener::bind("127.0.0.1:0") {
+            Ok(l) => match l.local_addr() {
+                Ok(a) => a.port(),
+                Err(_) => return,
+            },
+            Err(_) => return,
+        };
+        // Listener dropped: nothing listens on this port anymore.
+        let result = call_tool("layer.list", &serde_json::json!({}), Some(port));
+        assert!(content_text(&result).contains("control unreachable"));
+    }
+
+    #[test]
     fn geocode_out_of_range_limit_rejected() {
-        let result = call_tool("geocode.search", &json!({"query": "Wien", "limit": 99}));
+        let result = call_tool(
+            "geocode.search",
+            &json!({"query": "Wien", "limit": 99}),
+            None,
+        );
         let text = result
             .get("content")
             .and_then(|c| c.as_array())

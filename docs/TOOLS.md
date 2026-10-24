@@ -1,5 +1,10 @@
 # Tool Reference (9 MCP tools + matching CLI)
 
+`mcp --connect PORT` drives the running app (`qgiscraft-app -- --control PORT`)
+for the DB-touching tools, so there is a single writer. See
+[control-protocol.md](control-protocol.md). Without `--connect` everything
+runs headless against the project DB file.
+
 Every command is also a CLI subcommand (`--json` for agents). MCP transport:
 stdio, MCP 2024-11-05, `initialize` / `tools/list` / `tools/call` / `ping`.
 

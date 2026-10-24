@@ -10,6 +10,7 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::todo)]
 
+pub mod control;
 pub mod error;
 pub mod geo;
 pub mod geocode;

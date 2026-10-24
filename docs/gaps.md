@@ -4,7 +4,8 @@ DONE:
 - Core `Command` bus (9 cmds) + validation hardening.
 - Store SQLite: layers + features (+geom_json) + visible + counts + migrations + clear_all.
 - CLI/MCP `--db` persistence (add/list/remove roundtrip proven).
-- MCP stdio: 9 tools, typed schemas.
+- MCP stdio: 9 tools, typed schemas. `mcp --connect PORT` forwards the DB-touching
+tools to the live app (single writer); see `docs/control-protocol.md`.
 - egui shell: DB-backed project, ear-clipped fills, per-layer palette, slippy zoom (wheel + Ctrl+wheel + pinch), pan, Fit data, F5 refresh.
 - Menus wired: Project (New armed/Refresh/Quit), Layer (add/remove/zoom-to/show-hide), View (zoom/fit/reset), Help (About); shortcuts.
 - Geocode: demo + Photon live. Overpass: fenced builder + dry-run + live + `--ingest` (full geometry).
