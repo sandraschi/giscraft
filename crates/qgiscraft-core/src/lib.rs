@@ -27,6 +27,7 @@ pub const CMD_LAYER_LIST: &str = "layer.list";
 pub const CMD_LAYER_REMOVE: &str = "layer.remove";
 pub const CMD_GEOCODE_SEARCH: &str = "geocode.search";
 pub const CMD_OVERPASS_QUERY: &str = "overpass.query";
+pub const CMD_FEATURES_LIST: &str = "features.list";
 pub const CMD_EXPORT_PNG: &str = "export.png";
 
 /// Bounded command bus. New capability = new variant + dispatch arm + test.
@@ -83,7 +84,7 @@ pub async fn dispatch(cmd: Command) -> Value {
             "commands": [
                 CMD_STATUS, CMD_PROJECT_STATUS,
                 CMD_LAYER_ADD, CMD_LAYER_LIST, CMD_LAYER_REMOVE,
-                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_EXPORT_PNG,
+                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_EXPORT_PNG,
             ],
             "agent_contract": "CLI-first: every command supports --json; `mcp` subcommand mirrors the same dispatch over stdio",
         }),
@@ -199,7 +200,7 @@ mod tests {
             .and_then(|c| c.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(cmds.len(), 8);
+        assert_eq!(cmds.len(), 9);
     }
 
     #[tokio::test]

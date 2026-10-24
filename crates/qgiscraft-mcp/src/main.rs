@@ -49,6 +49,8 @@ enum Commands {
         geom_type: String,
         #[arg(long)]
         crs: Option<String>,
+        #[arg(long, num_args(0..=1), default_value = "true", default_missing_value = "true")]
+        visible: bool,
         #[arg(long)]
         db: Option<String>,
         #[arg(long)]
@@ -98,6 +100,19 @@ enum Commands {
         #[arg(long)]
         live: bool,
         #[arg(long)]
+        ingest: bool,
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// List ingested point features (SQLite project DB)
+    FeaturesList {
+        #[arg(long)]
+        layer_id: Option<String>,
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
         json: bool,
     },
     /// Run the MCP server over stdio (logs on stderr, JSON-RPC on stdout)
@@ -129,6 +144,7 @@ fn layer_add(
     source: Option<String>,
     geom_type: Option<String>,
     crs: Option<String>,
+    visible: Option<bool>,
 ) -> Value {
     if id.trim().is_empty() || name.trim().is_empty() {
         return json!({"error": "invalid input: id and name must not be empty", "op": "layer.add"});
@@ -137,10 +153,11 @@ fn layer_add(
         Ok(conn) => conn,
         Err(e) => return json!({"error": e.to_string(), "op": "layer.add"}),
     };
-    let row = store::StoredLayer::new(id.to_string(), name.to_string(), source, geom_type, crs);
+    let mut row = store::StoredLayer::new(id.to_string(), name.to_string(), source, geom_type, crs);
+    row.visible = visible.unwrap_or(true);
     match store::add_layer(&conn, &row) {
         Ok(()) => {
-            json!({"id": row.id, "name": row.name, "source": row.source, "geom_type": row.geom_type, "crs": row.crs, "added": true})
+            json!({"id": row.id, "name": row.name, "source": row.source, "geom_type": row.geom_type, "crs": row.crs, "visible": row.visible, "added": true})
         }
         Err(e) => json!({"error": e.to_string(), "op": "layer.add"}),
     }
@@ -151,10 +168,23 @@ fn layer_list(db: Option<&str>) -> Value {
         Ok(conn) => conn,
         Err(e) => return json!({"error": e.to_string(), "op": "layer.list"}),
     };
-    match store::list_layers(&conn) {
-        Ok(layers) => json!({"count": layers.len(), "layers": layers}),
-        Err(e) => json!({"error": e.to_string(), "op": "layer.list"}),
-    }
+    let layers = match store::list_layers(&conn) {
+        Ok(layers) => layers,
+        Err(e) => return json!({"error": e.to_string(), "op": "layer.list"}),
+    };
+    let counts = store::feature_counts(&conn).unwrap_or_default();
+    let rows: Vec<Value> = layers
+        .into_iter()
+        .map(|l| {
+            let n = counts
+                .iter()
+                .find(|(id, _)| *id == l.id)
+                .map(|(_, n)| *n)
+                .unwrap_or(0);
+            json!({"id": l.id, "name": l.name, "source": l.source, "geom_type": l.geom_type, "crs": l.crs, "visible": l.visible, "features": n})
+        })
+        .collect();
+    json!({"count": rows.len(), "layers": rows})
 }
 
 fn layer_remove(db: Option<&str>, id: &str) -> Value {
@@ -168,6 +198,73 @@ fn layer_remove(db: Option<&str>, id: &str) -> Value {
     match store::remove_layer(&conn, id) {
         Ok(removed) => json!({"id": id, "removed": removed}),
         Err(e) => json!({"error": e.to_string(), "op": "layer.remove"}),
+    }
+}
+
+/// Ingest dispatch-result hits into the project DB under `layer_id`.
+/// Pure-DB seam: tested with temp DBs, no network.
+fn ingest_hits(db: Option<&str>, layer_id: &str, layer_name: &str, hits: &Value) -> Value {
+    if layer_id.trim().is_empty() {
+        return json!({"error": "invalid input: layer id must not be empty", "op": "overpass.query"});
+    }
+    let conn = match store::open_at(db) {
+        Ok(conn) => conn,
+        Err(e) => return json!({"error": e.to_string(), "op": "overpass.query"}),
+    };
+    let arr = hits.as_array();
+    let mut feats = Vec::new();
+    if let Some(items) = arr {
+        for h in items {
+            let name = h
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("(unnamed)")
+                .to_string();
+            let kind = h
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("node")
+                .to_string();
+            let (lng, lat) = match (
+                h.get("lng").and_then(|v| v.as_f64()),
+                h.get("lat").and_then(|v| v.as_f64()),
+            ) {
+                (Some(lng), Some(lat)) => (lng, lat),
+                _ => continue,
+            };
+            feats.push(store::StoredFeature {
+                layer_id: layer_id.to_string(),
+                name,
+                kind,
+                lng,
+                lat,
+            });
+        }
+    }
+    let layer = store::StoredLayer::new(
+        layer_id.to_string(),
+        layer_name.to_string(),
+        Some("overpass".to_string()),
+        Some("point".to_string()),
+        None,
+    );
+    if let Err(e) = store::add_layer(&conn, &layer) {
+        return json!({"error": e.to_string(), "op": "overpass.query"});
+    }
+    match store::replace_features(&conn, layer_id, &feats) {
+        Ok(n) => json!({"layer": layer_id, "ingested": n}),
+        Err(e) => json!({"error": e.to_string(), "op": "overpass.query"}),
+    }
+}
+
+fn features_list(db: Option<&str>, layer_id: Option<&str>) -> Value {
+    let conn = match store::open_at(db) {
+        Ok(conn) => conn,
+        Err(e) => return json!({"error": e.to_string(), "op": "features.list"}),
+    };
+    match store::list_features(&conn, layer_id) {
+        Ok(rows) => json!({"count": rows.len(), "features": rows}),
+        Err(e) => json!({"error": e.to_string(), "op": "features.list"}),
     }
 }
 
@@ -194,11 +291,12 @@ fn tools_list() -> Value {
         "tools": [
             {"name": "status", "description": "Show app status (mode, commands, contract)", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "project.status", "description": "Project CRS and layer count", "inputSchema": {"type": "object", "properties": {}}},
-            {"name": "layer.add", "description": "Add a layer: id, name required; source, geom_type, crs, db optional", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "source": {"type": "string"}, "geom_type": {"type": "string"}, "crs": {"type": "string"}, "db": {"type": "string"}}, "required": ["id", "name"]}},
+            {"name": "layer.add", "description": "Add a layer: id, name required; source, geom_type, crs, visible, db optional", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "source": {"type": "string"}, "geom_type": {"type": "string"}, "crs": {"type": "string"}, "visible": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["id", "name"]}},
             {"name": "layer.list", "description": "List layers in draw order (SQLite project DB; db optional)", "inputSchema": {"type": "object", "properties": {"db": {"type": "string"}}}},
             {"name": "layer.remove", "description": "Remove a layer by id (db optional)", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "db": {"type": "string"}}, "required": ["id"]}},
             {"name": "geocode.search", "description": "Search places: query required, limit 1..50, live=false demo else Photon", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "live": {"type": "boolean"}}, "required": ["query"]}},
-            {"name": "overpass.query", "description": "Overpass tag search: key/value required, bbox south/west/north/east optional, live=false dry-runs QL else executes", "inputSchema": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}, "south": {"type": "number"}, "west": {"type": "number"}, "north": {"type": "number"}, "east": {"type": "number"}, "live": {"type": "boolean"}}, "required": ["key", "value"]}},
+            {"name": "overpass.query", "description": "Overpass tag search: key/value required, bbox south/west/north/east optional, live=false dry-runs QL else executes; ingest=true writes hits to db", "inputSchema": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}, "south": {"type": "number"}, "west": {"type": "number"}, "north": {"type": "number"}, "east": {"type": "number"}, "live": {"type": "boolean"}, "ingest": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["key", "value"]}},
+            {"name": "features.list", "description": "List ingested point features, optionally filtered to one layer (db optional)", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "db": {"type": "string"}}}},
             {"name": "export.png", "description": "Export map PNG (Phase 1 render path)", "inputSchema": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}}},
         ]
     })
@@ -223,6 +321,7 @@ fn call_tool(name: &str, args: &Value) -> Value {
                 str_arg(args, "source"),
                 str_arg(args, "geom_type"),
                 str_arg(args, "crs"),
+                args.get("visible").and_then(|v| v.as_bool()),
             )
         }
         "layer.list" => {
@@ -257,15 +356,51 @@ fn call_tool(name: &str, args: &Value) -> Value {
         }
         "overpass.query" => {
             let f = |k: &str| args.get(k).and_then(|v| v.as_f64());
-            run(Command::OverpassQuery {
+            let live = args.get("live").and_then(|v| v.as_bool()).unwrap_or(false);
+            let ingest = args
+                .get("ingest")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let db = str_arg(args, "db");
+            if ingest && !live {
+                return json!({"content": [{"type": "text", "text": json!({"error": "invalid input: ingest requires live=true (nothing to ingest from a dry-run)", "op": "overpass.query"}).to_string()}]});
+            }
+            let out = run(Command::OverpassQuery {
                 key: str_arg(args, "key").unwrap_or_default(),
                 value: str_arg(args, "value").unwrap_or_default(),
                 south: f("south"),
                 west: f("west"),
                 north: f("north"),
                 east: f("east"),
-                live: args.get("live").and_then(|v| v.as_bool()).unwrap_or(false),
-            })
+                live,
+            });
+            if ingest && live && out.get("error").is_none() {
+                let key = out
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("overpass");
+                let value = out
+                    .get("value")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("result");
+                let slug = format!("{key}-{value}")
+                    .chars()
+                    .map(|c| if c.is_whitespace() { '_' } else { c })
+                    .collect::<String>();
+                let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+                let stored = ingest_hits(
+                    db.as_deref(),
+                    &slug,
+                    format!("{key}={value}").as_str(),
+                    &hits,
+                );
+                return json!({"content": [{"type": "text", "text": json!({"query_result": out, "ingest": stored}).to_string()}]});
+            }
+            out
+        }
+        "features.list" => {
+            let db = str_arg(args, "db");
+            features_list(db.as_deref(), str_arg(args, "layer_id").as_deref())
         }
         "export.png" => run(Command::ExportPng {
             width: args
@@ -369,6 +504,7 @@ fn main() {
             source,
             geom_type,
             crs,
+            visible,
             db,
             json,
         } => show(
@@ -379,6 +515,7 @@ fn main() {
                 Some(source),
                 Some(geom_type),
                 crs,
+                Some(visible),
             ),
             json,
             "layer.add",
@@ -407,19 +544,52 @@ fn main() {
             north,
             east,
             live,
+            ingest,
+            db,
             json,
-        } => show(
-            run(Command::OverpassQuery {
-                key,
-                value,
-                south,
-                west,
-                north,
-                east,
-                live,
-            }),
+        } => {
+            if ingest && !live {
+                show(
+                    json!({"error": "invalid input: ingest requires --live (nothing to ingest from a dry-run)", "op": "overpass.query"}),
+                    json,
+                    "overpass.query",
+                );
+            } else {
+                let out = run(Command::OverpassQuery {
+                    key: key.clone(),
+                    value: value.clone(),
+                    south,
+                    west,
+                    north,
+                    east,
+                    live,
+                });
+                if ingest && live && out.get("error").is_none() {
+                    let slug = format!("{key}-{value}")
+                        .chars()
+                        .map(|c| if c.is_whitespace() { '_' } else { c })
+                        .collect::<String>();
+                    let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+                    let stored = ingest_hits(
+                        db.as_deref(),
+                        &slug,
+                        format!("{key}={value}").as_str(),
+                        &hits,
+                    );
+                    show(
+                        json!({"query_result": out, "ingest": stored}),
+                        json,
+                        "overpass.query",
+                    );
+                } else {
+                    show(out, json, "overpass.query");
+                }
+            }
+        }
+        Commands::FeaturesList { layer_id, db, json } => show(
+            features_list(db.as_deref(), layer_id.as_deref()),
             json,
-            "overpass.query",
+            "features.list",
         ),
         Commands::Mcp => run_mcp_stdio(),
     }
@@ -430,14 +600,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_lists_eight_tools() {
+    fn catalog_lists_nine_tools() {
         let catalog = tools_list();
         let tools = catalog
             .get("tools")
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(tools.len(), 8);
+        assert_eq!(tools.len(), 9);
     }
 
     #[test]
@@ -488,6 +658,7 @@ mod tests {
             Some("osm".to_string()),
             Some("point".to_string()),
             None,
+            Some(true),
         );
         assert!(added
             .get("added")
@@ -519,6 +690,34 @@ mod tests {
         );
         let text = content_text(&result);
         assert!(text.contains("invalid input"));
+    }
+
+    #[test]
+    fn overpass_ingest_requires_live() {
+        let result = call_tool(
+            "overpass.query",
+            &json!({"key": "amenity", "value": "pharmacy", "ingest": true}),
+        );
+        assert!(content_text(&result).contains("ingest requires live=true"));
+    }
+
+    #[test]
+    fn ingest_hits_roundtrip_in_temp_db() {
+        let db = temp_db("ingest");
+        let hits = json!([
+            {"name": "A", "kind": "node", "lng": 16.3, "lat": 48.2},
+            {"name": "Broken", "kind": "node", "lng": "east", "lat": 48.2},
+        ]);
+        let stored = ingest_hits(
+            Some(db.as_str()),
+            "amenity-pharmacy",
+            "amenity=pharmacy",
+            &hits,
+        );
+        assert_eq!(stored.get("ingested").and_then(|v| v.as_u64()), Some(1));
+        let listed = features_list(Some(db.as_str()), Some("amenity-pharmacy"));
+        assert_eq!(listed.get("count").and_then(|v| v.as_u64()), Some(1));
+        let _ = std::fs::remove_file(&db);
     }
 
     #[test]

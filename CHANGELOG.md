@@ -1,5 +1,12 @@
 # Changelog - qgiscraft-mcp
 
+## 2026-10-24 - Phase 0.3: ingest + DB-backed app
+- Overpass `--ingest` writes live hits into the project DB (`db` param, slug layer id, replace semantics); dry-run + ingest is a typed error.
+- New `features.list` tool + CLI (9 tools total); `layer.list` carries `visible` + per-layer feature counts.
+- Store: `features` table, `visible` column, `set_visible`/`replace_features`/`list_features`/`feature_counts`, 3->7 col migration path.
+- egui app owns the DB file directly: open/seed/counts/add/remove/visible persist; the DB file IS the project (`.qgz` equivalent).
+- Tests hermetic via temp DBs: 28 green. Gates green: clippy -D warnings, fmt, xtask ci/layers/parity, stdio probe.
+
 ## 2026-10-24 - Phase 0.2: SQLite persistence + Overpass builder
 - `--db` plumbing: CLI + MCP layer add/list/remove persist to SQLite (`$QGISCRRAFT_DB` or `./qgiscraft.db`); roundtrip proven via CLI smoke.
 - Store 3->5 col migration (geom_type, crs) with duplicate-column-tolerant init; name validation; `resolve_db_path`/`open_at`.

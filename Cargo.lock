@@ -3051,6 +3051,7 @@ dependencies = [
  "eframe",
  "egui",
  "qgiscraft-core",
+ "qgiscraft-store",
  "serde_json",
 ]
 

@@ -1,5 +1,6 @@
 /target
 *.bak
 *.cache
+*.db
 *.exe
 .DS_Store

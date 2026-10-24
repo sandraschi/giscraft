@@ -14,6 +14,7 @@ serde_json = { workspace = true }
 eframe = { workspace = true }
 egui = { workspace = true }
 qgiscraft-core = { path = "../qgiscraft-core" }
+qgiscraft-store = { path = "../qgiscraft-store" }
 
 [lints]
 workspace = true

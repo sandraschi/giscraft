@@ -1,18 +1,18 @@
-# docs/gaps.md - ranked work list (v0.2: store + overpass builder landed)
+# docs/gaps.md - ranked work list (v0.3: ingest + DB-backed app landed)
 
 DONE:
-- Core `Command` bus + validation hardening.
-- Store SQLite: init/add/list/remove roundtrip + `resolve_db_path`/`open_at` + 3->5 col migration.
-- CLI/MCP `--db` persistence plumbing (add/list/remove roundtrip proven).
-- MCP stdio: initialize/tools-list/tools-call/ping.
-- egui shell: real `Project` model (add/remove/visibility/log).
-- Geocode: demo default + Photon live (`--live` / `live:true`).
-- Overpass: fenced tag builder (injection-fenced) + dry-run QL + live execute (capped 100).
+- Core `Command` bus (9 cmds) + validation hardening.
+- Store SQLite: layers + features + visible + counts + migrations.
+- CLI/MCP `--db` persistence (add/list/remove roundtrip proven).
+- MCP stdio: 9 tools, typed schemas.
+- egui shell: DB-backed project (open/seed/counts/add/remove/visible persist).
+- Geocode: demo + Photon live.
+- Overpass: fenced builder + dry-run + live execute + `--ingest` into DB.
 
 NEXT (pick from top):
-1. Photon/Overpass results -> "ingest as layer" (write hits into project DB).
+1. Render path: vello_cpu canvas (points first, then lines/polygons).
 2. Symbology single/categorized/graduated dialogs.
 3. Processing Buffer/Clip/Reproject (pure Rust, no GDAL yet).
-4. Print Layout export PNG (vello_cpu path like designcraft-render).
-5. `.qgz`-equivalent open/save + OSM Austria PBF loader.
+4. Print Layout export PNG.
+5. OSM Austria PBF loader (bulk ingest, not just Overpass).
 6. egui kittest golden PNGs (`ui.screenshot` in `cargo test`).
