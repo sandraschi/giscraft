@@ -36,6 +36,7 @@ struct QgisCraftApp {
     fit_only: Option<String>,
     confirm_new: bool,
     show_about: bool,
+    show_settings: bool,
     textures: HashMap<(u8, i64, i64), egui::TextureHandle>,
 }
 
@@ -93,19 +94,25 @@ fn unproject(
     (merc_lng(x, world), merc_lat(y, world))
 }
 
-/// High-contrast dark: near-black surfaces, bright text/selection.
-/// Default egui dark washes out on bright office light; QGIS dailies
-/// stare at this canvas all day, so contrast outranks subtlety.
+/// High-contrast dark: near-black surfaces, white text, bright accents.
+/// No grey-on-black anywhere: body text, strokes and badges are full white
+/// or saturated color. QGIS dailies stare at this canvas all day, so
+/// contrast outranks subtlety.
 fn high_contrast_dark() -> egui::Visuals {
     let mut visuals = egui::Visuals::dark();
+    visuals.override_text_color = Some(egui::Color32::WHITE);
     visuals.window_fill = egui::Color32::from_rgb(0x0e, 0x0e, 0x11);
     visuals.panel_fill = egui::Color32::from_rgb(0x16, 0x16, 0x1a);
     visuals.extreme_bg_color = egui::Color32::from_rgb(0x05, 0x05, 0x07);
     visuals.code_bg_color = egui::Color32::from_rgb(0x05, 0x05, 0x07);
+    visuals.faint_bg_color = egui::Color32::from_rgb(0x05, 0x05, 0x07);
     visuals.selection.bg_fill = egui::Color32::from_rgb(0x2b, 0x6c, 0xb0);
     visuals.selection.stroke.color = egui::Color32::WHITE;
     visuals.hyperlink_color = egui::Color32::from_rgb(0x7c, 0xb8, 0xff);
-    visuals.widgets.noninteractive.fg_stroke.color = egui::Color32::from_gray(0xe8);
+    visuals.widgets.noninteractive.fg_stroke.color = egui::Color32::WHITE;
+    visuals.widgets.inactive.fg_stroke.color = egui::Color32::WHITE;
+    visuals.widgets.hovered.fg_stroke.color = egui::Color32::WHITE;
+    visuals.widgets.active.fg_stroke.color = egui::Color32::WHITE;
     visuals
 }
 
@@ -127,6 +134,7 @@ impl QgisCraftApp {
             fit_only: None,
             confirm_new: false,
             show_about: false,
+            show_settings: false,
             textures: HashMap::new(),
         };
         // Seed an empty project the way QGIS opens with a default basemap.
@@ -502,6 +510,11 @@ impl eframe::App for QgisCraftApp {
                         self.status = "reset".to_string();
                     }
                 });
+                ui.menu_button("Settings", |ui| {
+                    if ui.button("Configuration...").clicked() {
+                        self.show_settings = true;
+                    }
+                });
                 ui.menu_button("Help", |ui| {
                     if ui.button("About qgiscraft").clicked() {
                         self.show_about = true;
@@ -509,7 +522,6 @@ impl eframe::App for QgisCraftApp {
                 });
                 for menu in [
                     "Edit",
-                    "Settings",
                     "Plugins",
                     "Vector",
                     "Raster",
@@ -534,6 +546,30 @@ impl eframe::App for QgisCraftApp {
                 ui.label("Workflow: overpass.query --live --ingest, then Fit data.");
                 if ui.button("Close").clicked() {
                     self.show_about = false;
+                }
+            });
+        }
+        if self.show_settings {
+            egui::Window::new("Configuration").show(ui.ctx(), |ui| {
+                ui.label("Effective endpoints (read-only this session):");
+                ui.monospace(format!("project db : {}", self.db_path));
+                ui.monospace(format!(
+                    "tiles      : {}",
+                    qgiscraft_core::tiles::tile_url_template()
+                ));
+                ui.monospace(format!(
+                    "photon     : {}",
+                    qgiscraft_core::geocode::photon_base()
+                ));
+                ui.monospace(format!(
+                    "overpass   : {}",
+                    qgiscraft_core::overpass::overpass_url()
+                ));
+                ui.label("Override via environment before launch:");
+                ui.monospace("QGISCRAFT_DB / QGISCRAFT_TILES_URL / QGISCRAFT_PHOTON_URL / QGISCRAFT_OVERPASS_URL");
+                ui.label("Restart the app to apply changes.");
+                if ui.button("Close").clicked() {
+                    self.show_settings = false;
                 }
             });
         }
@@ -850,7 +886,7 @@ impl eframe::App for QgisCraftApp {
                             egui::Align2::LEFT_BOTTOM,
                             feat.name.clone(),
                             egui::FontId::proportional(11.0),
-                            egui::Color32::from_gray(0xe8),
+                            egui::Color32::WHITE,
                         );
                     }
                 }
@@ -858,7 +894,7 @@ impl eframe::App for QgisCraftApp {
             painter.rect_stroke(
                 rect,
                 0.0,
-                egui::Stroke::new(1.0, egui::Color32::from_gray(0x60)),
+                egui::Stroke::new(1.5, egui::Color32::WHITE),
                 egui::StrokeKind::Inside,
             );
             painter.text(
@@ -866,7 +902,7 @@ impl eframe::App for QgisCraftApp {
                 egui::Align2::RIGHT_BOTTOM,
                 "(c) OpenStreetMap contributors",
                 egui::FontId::proportional(10.0),
-                egui::Color32::from_gray(0xb0),
+                egui::Color32::WHITE,
             );
             // Wheel zoom (QGIS default: plain wheel zooms; Ctrl+wheel and
             // pinch arrive as a multiplicative factor - egui routes

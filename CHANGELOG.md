@@ -1,5 +1,10 @@
 # Changelog - qgiscraft-mcp
 
+## 2026-10-24 - Phase 1.3: contrast + settings
+- No grey on black: full-white body text (`override_text_color`), widget strokes, canvas frame, attribution; near-black surfaces kept.
+- Settings menu: Configuration window shows effective endpoints (DB, tiles template, Photon, Overpass) + env override names; new `QGISCRAFT_{TILES,PHOTON,OVERPASS}_URL` overrides in core (offline-tested template expansion).
+- Gates green: 56 tests, clippy -D warnings, fmt, xtask ci.
+
 ## 2026-10-24 - Phase 1.2: zoom that works + QGIS oracle installed
 - Fixed dead Ctrl-wheel zoom: egui routes Ctrl+scroll into `zoom_delta()` and empties the scroll channel by design; now reads the factor path AND plain-wheel (QGIS default) smoothed deltas. Found by reading egui 0.37 wheel_state source, not by guessing.
 - QGIS 3.44.15-Solothurn LTR installed side-by-side (`C:\Program Files\QGIS 3.44.15`, `qgis-ltr.bat`).

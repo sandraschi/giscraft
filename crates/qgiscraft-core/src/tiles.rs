@@ -82,6 +82,29 @@ pub fn tile_pixel_to_lnglat(tile: Tile, px: f64, py: f64) -> (f64, f64) {
     (lng, t.sinh().atan().to_degrees())
 }
 
+/// XYZ tile URL template (`{z}/{x}/{y}` placeholders).
+/// Override with `QGISCRAFT_TILES_URL` (e.g. a local mirror or style).
+/// No network here: pure string handling, so tests stay offline.
+pub fn tile_url_template() -> String {
+    std::env::var("QGISCRAFT_TILES_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "https://tile.openstreetmap.org/{z}/{x}/{y}.png".to_string())
+}
+
+/// Expand a `{z}/{x}/{y}` template for one tile. Pure string work.
+pub fn expand_template(template: &str, tile: Tile) -> String {
+    template
+        .replace("{z}", &tile.z.to_string())
+        .replace("{x}", &tile.x.to_string())
+        .replace("{y}", &tile.y.to_string())
+}
+
+/// Expand the configured template for one tile.
+pub fn tile_url(tile: Tile) -> String {
+    expand_template(&tile_url_template(), tile)
+}
+
 fn cache_dir() -> std::path::PathBuf {
     let mut p = std::env::temp_dir();
     p.push("qgiscraft-tiles");
@@ -97,10 +120,7 @@ pub fn fetch_tile_png(tile: Tile) -> Result<Vec<u8>, GisError> {
             return Ok(bytes);
         }
     }
-    let url = format!(
-        "https://tile.openstreetmap.org/{}/{}/{}.png",
-        tile.z, tile.x, tile.y
-    );
+    let url = tile_url(tile);
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .user_agent("qgiscraft-mcp/0.1 (dev spike, few tiles; OSM attribution shown)")
@@ -181,6 +201,24 @@ mod tests {
     #[test]
     fn empty_png_rejected_without_network() {
         assert!(decode_png_rgba(&[]).is_err());
+    }
+
+    #[test]
+    fn template_expands_placeholders() {
+        let url = expand_template(
+            "https://tiles.example.org/{z}/{x}/{y}.png",
+            Tile {
+                z: 15,
+                x: 17688,
+                y: 11054,
+            },
+        );
+        assert_eq!(url, "https://tiles.example.org/15/17688/11054.png");
+    }
+
+    #[test]
+    fn template_is_nonempty() {
+        assert!(!tile_url_template().trim().is_empty());
     }
 
     #[test]

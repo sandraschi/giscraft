@@ -156,7 +156,16 @@ fn centroid(coords: &[(f64, f64)]) -> (f64, f64) {
     (sx / n, sy / n)
 }
 
-/// Execute a builder-produced QL against the public Overpass API.
+/// Overpass interpreter URL (keyless public instance).
+/// Override with `QGISCRAFT_OVERPASS_URL` (own mirror recommended).
+pub fn overpass_url() -> String {
+    std::env::var("QGISCRAFT_OVERPASS_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "https://overpass-api.de/api/interpreter".to_string())
+}
+
+/// Execute a builder-produced QL against the Overpass API.
 /// Keyless; 60s timeout; typed errors on status/parse.
 pub async fn execute_ql(ql: &str) -> Result<Vec<OverpassHit>, GisError> {
     if ql.trim().is_empty() {
@@ -168,7 +177,7 @@ pub async fn execute_ql(ql: &str) -> Result<Vec<OverpassHit>, GisError> {
         .build()
         .map_err(|e| GisError::Offline(format!("http client: {e}")))?;
     let resp = client
-        .post("https://overpass-api.de/api/interpreter")
+        .post(overpass_url())
         .body(ql.to_string())
         .send()
         .await
