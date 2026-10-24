@@ -102,7 +102,6 @@ struct QgisCraftApp {
     selected: Option<String>,
     status: String,
     log: Vec<String>,
-    next_n: usize,
     zoom: f32,
     center_lng: f64,
     center_lat: f64,
@@ -180,7 +179,6 @@ impl QgisCraftApp {
             selected: None,
             status: "render on".to_string(),
             log: Vec::new(),
-            next_n: 1,
             zoom: 15.0,
             center_lng: 16.3738,
             center_lat: 48.2082,
@@ -300,6 +298,30 @@ fn layer_color(id: &str) -> egui::Color32 {
     egui::Color32::from_rgb(r, g, b)
 }
 
+/// True when (lng, lat) is within `tol` degrees of a polyline
+/// (or closed ring when `closed`). Segment math lives in core.
+fn near_polyline(lng: f64, lat: f64, pts: &[(f64, f64)], closed: bool, tol: f64) -> bool {
+    if pts.len() < 2 {
+        return false;
+    }
+    let n = pts.len();
+    let end = if closed { n } else { n - 1 };
+    for i in 0..end {
+        let a = match pts.get(i) {
+            Some(&p) => p,
+            None => continue,
+        };
+        let b = match pts.get((i + 1) % n) {
+            Some(&p) => p,
+            None => continue,
+        };
+        if tiles::dist_to_segment_deg(lng, lat, a.0, a.1, b.0, b.1) <= tol {
+            return true;
+        }
+    }
+    false
+}
+
 /// Drawable geometry parsed from a feature's `geom_json`.
 /// Points (None) fall back to the centroid dot.
 enum Geom {
@@ -352,9 +374,72 @@ fn parse_geom(feat: &store::StoredFeature) -> Option<Geom> {
     }
 }
 
+/// Hit-test result: what the cursor points at (module scope by necessity:
+/// structs and impl blocks cannot nest inside another impl).
+struct HitInfo {
+    layer_id: String,
+    name: String,
+    kind: String,
+    lng: f64,
+    lat: f64,
+}
+
 /// Frame visible features with padding. No-op when nothing is visible.
 impl QgisCraftApp {
-    /// Zoom to cursor: anchor the geo under the pointer, then move.
+    /// Identify the topmost visible feature under a screen point.
+    /// Points: within 12px (cos-corrected). Lines: within 12px of any
+    /// segment. Polygons: inside, or within 12px of an edge.
+    /// (The zoom-to-cursor helper `zoom_to` follows in this same impl.)
+    fn pick_at(&self, pos: egui::Pos2, rect: &egui::Rect) -> Option<HitInfo> {
+        if !rect.contains(pos) {
+            return None;
+        }
+        let (glng, glat) = unproject(pos, self.center_lng, self.center_lat, self.zoom, rect);
+        if !glng.is_finite() || !glat.is_finite() {
+            return None;
+        }
+        let cos_lat = self.center_lat.to_radians().cos().max(0.1);
+        let tol = 12.0 * tiles::meters_per_pixel(self.center_lat, self.zoom) / 111320.0 / cos_lat;
+        if tol <= 0.0 || !tol.is_finite() {
+            return None;
+        }
+        let hit = |f: &store::StoredFeature| HitInfo {
+            layer_id: f.layer_id.clone(),
+            name: f.name.clone(),
+            kind: f.kind.clone(),
+            lng: f.lng,
+            lat: f.lat,
+        };
+        for f in self.features.iter().rev() {
+            if !self.is_visible(f.layer_id.as_str()) {
+                continue;
+            }
+            match parse_geom(f) {
+                Some(Geom::Poly(ring)) => {
+                    if ring.len() >= 3 && tiles::point_in_ring(glng, glat, &ring) {
+                        return Some(hit(f));
+                    }
+                    if near_polyline(glng, glat, &ring, true, tol) {
+                        return Some(hit(f));
+                    }
+                }
+                Some(Geom::Line(line)) => {
+                    if near_polyline(glng, glat, &line, false, tol) {
+                        return Some(hit(f));
+                    }
+                }
+                None => {
+                    let dx = (f.lng - glng) * cos_lat;
+                    let dy = f.lat - glat;
+                    if dx * dx + dy * dy <= tol * tol {
+                        return Some(hit(f));
+                    }
+                }
+            }
+        }
+        None
+    }
+
     fn zoom_to(&mut self, anchor: egui::Pos2, target: f32, rect: &egui::Rect) {
         let (glng, glat) = unproject(anchor, self.center_lng, self.center_lat, self.zoom, rect);
         self.zoom = target.clamp(2.0, 19.0);
@@ -965,6 +1050,25 @@ impl QgisCraftApp {
                     ui.text_edit_singleline(key);
                     ui.label("Tag value:");
                     ui.text_edit_singleline(value);
+                    ui.label("Common POIs (tap to fill):");
+                    ui.horizontal_wrapped(|ui| {
+                        for (label, k, v) in [
+                            ("Cafes", "amenity", "cafe"),
+                            ("Pharmacies", "amenity", "pharmacy"),
+                            ("Bike shops", "shop", "bicycle"),
+                            ("Restaurants", "amenity", "restaurant"),
+                            ("Bars", "amenity", "bar"),
+                            ("ATMs", "amenity", "atm"),
+                            ("Locksmiths", "craft", "locksmith"),
+                            ("Bakeries", "shop", "bakery"),
+                            ("Supermarkets", "shop", "supermarket"),
+                        ] {
+                            if ui.button(label).clicked() {
+                                *key = k.to_string();
+                                *value = v.to_string();
+                            }
+                        }
+                    });
                     ui.checkbox(use_view, "Restrict to map canvas extent");
                     ui.horizontal(|ui| {
                         if ui.button("Download").clicked() {
@@ -1302,22 +1406,24 @@ impl eframe::App for QgisCraftApp {
                     }
                 });
                 ui.menu_button("Layer", |ui| {
-                    if ui.button("Add demo layer").clicked() {
-                        let n = self.next_n;
-                        self.next_n += 1;
-                        let layer = store::StoredLayer::new(
-                            format!("demo-{n}"),
-                            format!("demo-{n}"),
-                            Some("osm".to_string()),
-                            Some("point".to_string()),
-                            None,
-                        );
-                        match store::open_default().and_then(|c| store::add_layer(&c, &layer)) {
-                            Ok(()) => {
-                                self.push_log(format!("layer.add demo-{n}"));
-                                self.refresh();
-                            }
-                            Err(e) => self.push_log(format!("layer.add failed: {e}")),
+                    if ui.button("Add Vector Layer...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("GeoJSON", &["geojson", "json"])
+                            .pick_file()
+                        {
+                            self.import_geojson_file(&path);
+                        } else {
+                            self.push_log("import cancelled".to_string());
+                        }
+                    }
+                    if ui.button("Add Delimited Text Layer...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("CSV", &["csv", "txt"])
+                            .pick_file()
+                        {
+                            self.import_csv_file(&path);
+                        } else {
+                            self.push_log("import cancelled".to_string());
                         }
                     }
                     if ui.button("Remove selected (Del)").clicked() {
@@ -1571,23 +1677,12 @@ impl eframe::App for QgisCraftApp {
                     Err(e) => self.push_log(format!("remove failed: {e}")),
                 }
             }
-            if ui.button("Add demo layer").clicked() {
-                let n = self.next_n;
-                self.next_n += 1;
-                let layer = store::StoredLayer::new(
-                    format!("demo-{n}"),
-                    format!("demo-{n}"),
-                    Some("osm".to_string()),
-                    Some("point".to_string()),
-                    None,
-                );
-                match store::open_default().and_then(|c| store::add_layer(&c, &layer)) {
-                    Ok(()) => {
-                        self.push_log(format!("layer.add demo-{n}"));
-                        self.refresh();
-                    }
-                    Err(e) => self.push_log(format!("layer.add failed: {e}")),
-                }
+            if ui.button("Add OSM data...").clicked() {
+                self.dialog = Dialog::OsmDownload {
+                    key: String::new(),
+                    value: String::new(),
+                    use_view: true,
+                };
             }
             ui.horizontal(|ui| {
                 if ui.button("Fit data").clicked() {
@@ -1833,6 +1928,7 @@ impl eframe::App for QgisCraftApp {
                         if !rect.contains(pos) {
                             continue;
                         }
+                        painter.circle_filled(pos, 5.5, egui::Color32::WHITE);
                         painter.circle_filled(pos, 4.0, color);
                     }
                 }
@@ -1953,6 +2049,50 @@ impl eframe::App for QgisCraftApp {
                 self.center_lng = nclng;
                 self.center_lat = nclat;
                 self.status = "pan".to_string();
+            }
+            // Identify on hover + click: topmost visible feature wins.
+            // QGIS behavior: tooltip on hover, click selects the layer
+            // and pins the details; empty click clears the selection.
+            if let Some(pos) = hover {
+                if rect.contains(pos) && !resp.dragged() {
+                    if let Some(hit) = self.pick_at(pos, &rect) {
+                        let detail = format!("{} · {:.5}, {:.5}", hit.kind, hit.lat, hit.lng);
+                        let pad = egui::Vec2::new(8.0, 6.0);
+                        let w = 260.0;
+                        let anchor = egui::Pos2::new(
+                            (pos.x + 14.0).min(rect.max.x - w - 4.0),
+                            (pos.y + 16.0).min(rect.max.y - 52.0),
+                        );
+                        let card = egui::Rect::from_min_size(anchor, egui::Vec2::new(w, 44.0));
+                        painter.rect_filled(card, 4.0, egui::Color32::from_rgb(0x16, 0x16, 0x1a));
+                        painter.rect_stroke(
+                            card,
+                            4.0,
+                            egui::Stroke::new(1.0, egui::Color32::WHITE),
+                            egui::StrokeKind::Inside,
+                        );
+                        painter.text(
+                            anchor + egui::Vec2::new(pad.x, pad.y),
+                            egui::Align2::LEFT_TOP,
+                            hit.name.clone(),
+                            egui::FontId::proportional(12.0),
+                            egui::Color32::WHITE,
+                        );
+                        painter.text(
+                            anchor + egui::Vec2::new(pad.x, pad.y + 16.0),
+                            egui::Align2::LEFT_TOP,
+                            detail,
+                            egui::FontId::proportional(11.0),
+                            egui::Color32::WHITE,
+                        );
+                        if resp.clicked() {
+                            self.selected = Some(hit.layer_id);
+                            self.status = format!("{} ({})", hit.name, hit.kind);
+                        }
+                    } else if resp.clicked() {
+                        self.selected = None;
+                    }
+                }
             }
         });
     }
@@ -2523,5 +2663,89 @@ mod tests {
     #[test]
     fn layer_color_is_deterministic() {
         assert_eq!(layer_color("a"), layer_color("a"));
+    }
+
+    fn test_app(features: Vec<store::StoredFeature>, visible: bool) -> QgisCraftApp {
+        QgisCraftApp {
+            db_path: ":memory:".to_string(),
+            layers: vec![LayerRow {
+                id: "rx".to_string(),
+                name: "Rx".to_string(),
+                source: "osm".to_string(),
+                geom_type: "point".to_string(),
+                visible,
+                features: features.len() as u64,
+            }],
+            features,
+            selected: None,
+            status: String::new(),
+            log: Vec::new(),
+            zoom: 15.0,
+            center_lng: 16.35,
+            center_lat: 48.225,
+            fit_requested: false,
+            fit_only: None,
+            confirm_new: false,
+            show_about: false,
+            show_settings: false,
+            dialog: Dialog::None,
+            toolbox_query: String::new(),
+            pending: None,
+            tile_template: String::new(),
+            textures: HashMap::new(),
+            control_rx: None,
+            last_rect: None,
+        }
+    }
+
+    fn center_feature(name: &str) -> store::StoredFeature {
+        store::StoredFeature {
+            layer_id: "rx".to_string(),
+            name: name.to_string(),
+            kind: "node".to_string(),
+            lng: 16.35,
+            lat: 48.225,
+            geom_json: None,
+        }
+    }
+
+    #[test]
+    fn pick_at_finds_points_and_respects_visibility() {
+        let app = test_app(vec![center_feature("A")], true);
+        let rect = test_rect();
+        let pa = project(
+            16.35,
+            48.225,
+            app.center_lng,
+            app.center_lat,
+            app.zoom,
+            &rect,
+        );
+        assert!((pa.x - 400.0).abs() < 1.0 && (pa.y - 300.0).abs() < 1.0);
+        let hit = app.pick_at(pa, &rect);
+        assert!(hit.is_some());
+        assert_eq!(hit.map(|h| h.name), Some("A".to_string()));
+        assert!(app.pick_at(egui::Pos2::new(790.0, 590.0), &rect).is_none());
+        let hidden = test_app(vec![center_feature("A")], false);
+        assert!(hidden.pick_at(pa, &rect).is_none());
+    }
+
+    #[test]
+    fn pick_at_finds_polygon_interior() {
+        let feat = geom_feature(
+            r#"{"type":"Polygon","coordinates":[[[16.348,48.223],[16.352,48.223],[16.352,48.227],[16.348,48.227],[16.348,48.223]]]}"#,
+        );
+        let app = test_app(vec![feat], true);
+        let rect = test_rect();
+        let inside = project(
+            16.35,
+            48.225,
+            app.center_lng,
+            app.center_lat,
+            app.zoom,
+            &rect,
+        );
+        assert!(app.pick_at(inside, &rect).is_some());
+        assert!(app.pick_at(egui::Pos2::new(10.0, 590.0), &rect).is_none());
     }
 }

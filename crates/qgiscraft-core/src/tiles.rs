@@ -193,8 +193,72 @@ pub fn recenter(glng: f64, glat: f64, ax: f32, ay: f32, cx: f32, cy: f32, zoom: 
     (lng, t.sinh().atan().to_degrees())
 }
 
-/// Meters per pixel at a latitude and float zoom (WGS84 equatorial
-/// circumference / 2^zoom, cos-corrected). Basis for scale bars/readouts.
+/// Hit-testing shared by the native canvas and any future picker.
+/// All pure math, degrees in / pixels out, no I/O.
+/// Even-odd point-in-ring test (lon/lat space is fine at city scale).
+/// Edges count as inside (a click exactly on a border selects the polygon).
+pub fn point_in_ring(lng: f64, lat: f64, ring: &[(f64, f64)]) -> bool {
+    if !lng.is_finite() || !lat.is_finite() || ring.len() < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let n = ring.len();
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi) = match ring.get(i) {
+            Some(&p) => p,
+            None => {
+                j = i;
+                continue;
+            }
+        };
+        let (xj, yj) = match ring.get(j) {
+            Some(&p) => p,
+            None => {
+                j = i;
+                continue;
+            }
+        };
+        if dist_to_segment_deg(lng, lat, xi, yi, xj, yj) < 1e-12 {
+            return true;
+        }
+        if (yi > lat) != (yj > lat) {
+            let x_int = xi + (lat - yi) * (xj - xi) / (yj - yi);
+            if lng < x_int {
+                inside = !inside;
+            }
+        }
+        j = i;
+    }
+    inside
+}
+/// Distance in degrees from point p to segment a-b. Used for line picking
+/// (the caller converts a pixel tolerance into degrees with the local
+/// meters-per-pixel scale).
+pub fn dist_to_segment_deg(
+    plng: f64,
+    plat: f64,
+    alng: f64,
+    alat: f64,
+    blng: f64,
+    blat: f64,
+) -> f64 {
+    let dx = blng - alng;
+    let dy = blat - alat;
+    let len2 = dx * dx + dy * dy;
+    if len2 <= 0.0 || !len2.is_finite() {
+        let ddx = plng - alng;
+        let ddy = plat - alat;
+        return (ddx * ddx + ddy * ddy).sqrt();
+    }
+    let t = (((plng - alng) * dx + (plat - alat) * dy) / len2).clamp(0.0, 1.0);
+    let cx = alng + t * dx;
+    let cy = alat + t * dy;
+    let ddx = plng - cx;
+    let ddy = plat - cy;
+    (ddx * ddx + ddy * ddy).sqrt()
+}
+
 pub fn meters_per_pixel(lat: f64, zoom: f32) -> f64 {
     156543.03392 * lat.to_radians().cos() / 2_f64.powf(zoom as f64)
 }
@@ -218,8 +282,7 @@ pub fn nice_scale_bar(mpp: f64, max_px: f32) -> (f64, f64) {
     (pow10 / 10.0, pow10 / 10.0 / mpp)
 }
 
-/// Deterministic per-layer color from a fixed high-contrast palette.
-/// Same id always maps to the same color across native canvas, headless
+/// Deterministic per-layer color from a fixed high-contrast palette./// Same id always maps to the same color across native canvas, headless
 /// BMP, and web preview (app wraps this into `egui::Color32`).
 pub fn layer_color(id: &str) -> (u8, u8, u8) {
     const PALETTE: [[u8; 3]; 8] = [
@@ -489,5 +552,33 @@ mod tests {
         assert!(px <= 120.0 && px > 0.0);
         assert_eq!(nice_scale_bar(0.0, 100.0), (0.0, 0.0));
         assert_eq!(nice_scale_bar(f64::NAN, 100.0), (0.0, 0.0));
+    }
+
+    #[test]
+    fn picking_point_in_ring_and_segments() {
+        let square = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
+        assert!(point_in_ring(0.5, 0.5, &square));
+        assert!(!point_in_ring(2.0, 0.5, &square));
+        assert!(point_in_ring(0.0, 0.5, &square));
+        assert!(!point_in_ring(0.5, 0.5, &[]));
+        assert!(!point_in_ring(f64::NAN, 0.5, &square));
+        // C-shape: bay is outside.
+        let c = vec![
+            (0.0, 0.0),
+            (4.0, 0.0),
+            (4.0, 1.0),
+            (1.0, 1.0),
+            (1.0, 3.0),
+            (4.0, 3.0),
+            (4.0, 4.0),
+            (0.0, 4.0),
+        ];
+        assert!(point_in_ring(0.5, 2.0, &c));
+        assert!(!point_in_ring(2.5, 2.0, &c));
+        // Segment distance: on-line ~0, off-line grows, endpoints clamp.
+        assert!(dist_to_segment_deg(0.5, 0.0, 0.0, 0.0, 1.0, 0.0) < 1e-12);
+        assert!((dist_to_segment_deg(0.5, 1.0, 0.0, 0.0, 1.0, 0.0) - 1.0).abs() < 1e-9);
+        assert!(dist_to_segment_deg(2.0, 0.0, 0.0, 0.0, 1.0, 0.0) > 0.9);
+        assert!(dist_to_segment_deg(5.0, 5.0, 5.0, 5.0, 5.0, 5.0) < 1e-12);
     }
 }

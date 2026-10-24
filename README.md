@@ -73,7 +73,8 @@ is in [INSTALL.md](INSTALL.md). Developers: [docs/DEVELOPMENT.md](docs/DEVELOPME
 | [Plugin strategy](docs/plugins.md) | Why MCP tools are our plugin system |
 | [Architecture](docs/ARCHITECTURE.md) | L1/L2/L3, command bus, DB-as-project, stdio framing |
 | [Configuration](docs/CONFIGURATION.md) | Env vars, config options |
-| [Tool Reference](docs/TOOLS.md) | All 9 MCP tools |
+| [Tool Reference](docs/TOOLS.md) | All 10 MCP tools |
+| [Glossary](docs/GLOSSARY.md) | Plain-language terms: bbox, Overpass, tiles, CRS, ODbL... |
 | [Parity target](docs/target-app-parity.md) | QGIS scope, oracle loop |
 | [UI parity](docs/ui-parity.md) | Measured checklist vs running QGIS |
 | [Development](docs/DEVELOPMENT.md) | Setup, recipes, gates |

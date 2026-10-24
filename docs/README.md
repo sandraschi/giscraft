@@ -10,6 +10,7 @@
 | [WORKFLOWS.md](WORKFLOWS.md) | Worked recipes: question to map, 3 integration paths (bike shops) |
 | [CONFIGURATION.md](CONFIGURATION.md) | Env vars (`QGISCRAFT_*`) |
 | [TOOLS.md](TOOLS.md) | All 10 MCP tools + CLI equivalents |
+| [GLOSSARY.md](GLOSSARY.md) | Plain-language terms: bbox, Overpass, tiles, CRS, ODbL... |
 | [target-app-parity.md](target-app-parity.md) | QGIS scope, oracle loop |
 | [ui-parity.md](ui-parity.md) | Measured checklist vs running QGIS |
 | [assessment.md](assessment.md) | Self-review + cross-checks |
