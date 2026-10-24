@@ -1,5 +1,12 @@
 # Changelog - qgiscraft-mcp
 
+## 2026-10-24 - Phase 0.7: hygiene batch (assessment findings)
+- Env rename `QGISCRRAFT_DB` -> `QGISCRAFT_DB` (was misspelled since 0.1; fixed before anything depended on it).
+- `parity-checklist.md` rewritten honestly: toolbars/box-zoom/F6/WMS dialogs unchecked, Overpass+Photon checked, `--smoke` BMP instead of kittest claim.
+- `AGENTS.md` section 2 corrected: core deps + live I/O, L2 owns persistence (intentional seam, keeps dispatch tests hermetic).
+- `.github/workflows/ci.yml`: Windows fmt+clippy+test+xtask.
+- Gates green: 34 tests, clippy -D warnings, fmt, xtask ci, smoke with renamed env.
+
 ## 2026-10-24 - Phase 0.6: first map render
 - Canvas draws ingested points (cyan, selected layer orange, off-canvas culled).
 - Ctrl-wheel zooms to cursor, drag pans, Fit data frames visible layers, F5 refreshes from DB.

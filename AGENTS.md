@@ -23,17 +23,31 @@ webapp parallel on 11253/11254 for users who never learned QGIS.
 - Stdio MCP invariant: **stdout is pure JSON-RPC only**. All logs go to stderr
   via `eprintln!`. Audit every crate for rogue `println!` outside the framed writer.
 
-## 2. Architecture and seams
+## 2. Architecture and seams (corrected post-0.6; was aspirational)
 
-- L1 `qgiscraft-core`: geo types, project model, command bus. Zero UI,
-  zero MCP, zero eframe dependencies. Compiles with only `serde` + `serde_json`.
-- `qgiscraft-store`: SQLite project store (rusqlite bundled). No UI/MCP.
+- L1 `qgiscraft-core`: geo types, project model, command bus, plus live
+  network clients (Photon, Overpass). UI-free and transport-free, but NOT
+  I/O-free: `dispatch` performs keyless live lookups when asked.
+  Deps: `serde` + `serde_json` + `tokio` + `reqwest` + `qgiscraft-store`
+  (the store dep is currently unused - use it or drop it).
+  Tests stay offline: live paths are opt-in (`live=false` default) and
+  never exercised in `cargo test`.
+- `qgiscraft-store`: SQLite project store (rusqlite bundled). Layers +
+  features + visible + counts, explicit child-delete (FK cascade is OFF
+  in SQLite by default). No UI/MCP/network. Env: `QGISCRAFT_DB`.
 - L2 `qgiscraft-mcp`: CLI-first binary + MCP `mcp` subcommand over stdio
-  (MCP 2024-11-05, hand-rolled line-delimited framing). No `rmcp` dep in v0.1.
-  The MCP layer only dispatches `Command` IDs into `qgiscraft-core`.
-- L3 `qgiscraft-app`: eframe/egui native clone. Calls `qgiscraft-core`
-  functions directly in-process. Never shells out to the MCP binary,
-  never uses local HTTP/JSON-RPC for the desktop path.
+  (MCP 2024-11-05, hand-rolled line-delimited framing). No `rmcp` dep.
+  L2 OWNS persistence: `layer_add/list/remove`, `ingest_hits`,
+  `features_list` live here and call the store directly; core `dispatch`
+  is the validator + live-network path, not the sole pipeline.
+  (Earlier doc claimed L2 "only dispatches Command IDs" - no longer true
+  since 0.2, and that is intentional: it keeps core dispatch tests
+  hermetic without temp-DB plumbing.)
+- L3 `qgiscraft-app`: eframe/egui native clone. Owns the project DB file
+  directly (open/seed/list/add/remove/visible persist); calls core
+  `project`/`project()` math in-process for rendering, never shells out
+  to the MCP binary, never uses local HTTP/JSON-RPC for the desktop path.
+  `--smoke` runs open/seed/list + BMP preview headless (no window).
 - `xtask`: `ci` (fmt+clippy+test+layers+parity), `layers` (L6 UI swappable check),
   `parity` (presence checklist from `docs/parity-checklist.md`).
 - No agent may invent ad-hoc state transitions between UI widgets and core buffers.

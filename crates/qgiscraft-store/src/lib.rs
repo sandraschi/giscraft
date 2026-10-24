@@ -283,7 +283,7 @@ pub fn feature_counts(conn: &Connection) -> Result<Vec<(String, u64)>, StoreErro
     Ok(out)
 }
 
-/// Default project DB path: explicit `--db` > `$QGISCRRAFT_DB` > `./qgiscraft.db`.
+/// Default project DB path: explicit `--db` > `$QGISCRAFT_DB` > `./qgiscraft.db`.
 /// Explicit param keeps tests hermetic (unique temp files, no env mutation).
 pub fn resolve_db_path(explicit: Option<&str>) -> std::path::PathBuf {
     if let Some(raw) = explicit {
@@ -302,10 +302,10 @@ pub fn open_at(explicit: Option<&str>) -> Result<Connection, StoreError> {
     Ok(conn)
 }
 
-/// Default project DB path: `$QGISCRRAFT_DB` or `./qgiscraft.db`.
+/// Default project DB path: `$QGISCRAFT_DB` or `./qgiscraft.db`.
 /// Env override keeps ad-hoc runs hermetic (point it at a temp file).
 pub fn default_db_path() -> std::path::PathBuf {
-    if let Ok(raw) = std::env::var("QGISCRRAFT_DB") {
+    if let Ok(raw) = std::env::var("QGISCRAFT_DB") {
         let trimmed = raw.trim();
         if !trimmed.is_empty() {
             return std::path::PathBuf::from(trimmed);

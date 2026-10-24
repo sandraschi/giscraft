@@ -136,7 +136,7 @@ fn run(cmd: Command) -> Value {
 }
 
 /// L2 persistence owner: core dispatch validates, SQLite stores.
-/// `db=None` resolves to `$QGISCRRAFT_DB` or `./qgiscraft.db`.
+/// `db=None` resolves to `$QGISCRAFT_DB` or `./qgiscraft.db`.
 fn layer_add(
     db: Option<&str>,
     id: &str,
