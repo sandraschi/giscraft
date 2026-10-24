@@ -116,6 +116,19 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Import a GeoJSON/CSV file as a layer (format auto-detected or explicit)
+    LayerImport {
+        #[arg(long)]
+        path: String,
+        #[arg(long)]
+        format: Option<String>,
+        #[arg(long)]
+        layer_id: Option<String>,
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Run the MCP server over stdio (logs on stderr, JSON-RPC on stdout).
     /// With --connect PORT, the DB-touching tools run in the live app.
     Mcp {
@@ -226,13 +239,21 @@ fn layer_remove(db: Option<&str>, id: &str) -> Value {
 
 /// Ingest dispatch-result hits into the project DB under `layer_id`.
 /// Pure-DB seam: tested with temp DBs, no network.
-fn ingest_hits(db: Option<&str>, layer_id: &str, layer_name: &str, hits: &Value) -> Value {
+fn ingest_hits(
+    db: Option<&str>,
+    layer_id: &str,
+    layer_name: &str,
+    source: &str,
+    geom_type: &str,
+    hits: &Value,
+    op: &str,
+) -> Value {
     if layer_id.trim().is_empty() {
-        return json!({"error": "invalid input: layer id must not be empty", "op": "overpass.query"});
+        return serde_json::json!({"error": "invalid input: layer id must not be empty", "op": op});
     }
     let conn = match store::open_at(db) {
         Ok(conn) => conn,
-        Err(e) => return json!({"error": e.to_string(), "op": "overpass.query"}),
+        Err(e) => return serde_json::json!({"error": e.to_string(), "op": op}),
     };
     let arr = hits.as_array();
     let mut feats = Vec::new();
@@ -271,16 +292,16 @@ fn ingest_hits(db: Option<&str>, layer_id: &str, layer_name: &str, hits: &Value)
     let layer = store::StoredLayer::new(
         layer_id.to_string(),
         layer_name.to_string(),
-        Some("overpass".to_string()),
-        Some("point".to_string()),
+        Some(source.to_string()),
+        Some(geom_type.to_string()),
         None,
     );
     if let Err(e) = store::add_layer(&conn, &layer) {
-        return json!({"error": e.to_string(), "op": "overpass.query"});
+        return serde_json::json!({"error": e.to_string(), "op": op});
     }
     match store::replace_features(&conn, layer_id, &feats) {
-        Ok(n) => json!({"layer": layer_id, "ingested": n}),
-        Err(e) => json!({"error": e.to_string(), "op": "overpass.query"}),
+        Ok(n) => serde_json::json!({"layer": layer_id, "ingested": n}),
+        Err(e) => serde_json::json!({"error": e.to_string(), "op": op}),
     }
 }
 
@@ -324,6 +345,7 @@ fn tools_list() -> Value {
             {"name": "geocode.search", "description": "Search places: query required, limit 1..50, live=false demo else Photon", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "live": {"type": "boolean"}}, "required": ["query"]}},
             {"name": "overpass.query", "description": "Overpass tag search: key/value required, bbox south/west/north/east optional, live=false dry-runs QL else executes; ingest=true writes hits to db", "inputSchema": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}, "south": {"type": "number"}, "west": {"type": "number"}, "north": {"type": "number"}, "east": {"type": "number"}, "live": {"type": "boolean"}, "ingest": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["key", "value"]}},
             {"name": "features.list", "description": "List ingested point features, optionally filtered to one layer (db optional)", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "db": {"type": "string"}}}},
+            {"name": "layer.import", "description": "Import a GeoJSON/CSV file as a layer: format auto-detected by extension or explicit (geojson|csv); layer_id defaults to the file stem; persists to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "format": {"type": "string"}, "layer_id": {"type": "string"}, "db": {"type": "string"}}, "required": ["path"]}},
             {"name": "export.png", "description": "Export map PNG (Phase 1 render path)", "inputSchema": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}}},
         ]
     })
@@ -342,7 +364,7 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
     if let Some(port) = connect {
         let forward = matches!(
             name,
-            "project.status" | "layer.add" | "layer.list" | "layer.remove"
+            "project.status" | "layer.add" | "layer.list" | "layer.remove" | "layer.import"
         );
         if forward {
             let result = forward_control(port, name, args.clone());
@@ -432,7 +454,10 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
                     db.as_deref(),
                     &slug,
                     format!("{key}={value}").as_str(),
+                    "overpass",
+                    "point",
                     &hits,
+                    "overpass.query",
                 );
                 return json!({"content": [{"type": "text", "text": json!({"query_result": out, "ingest": stored}).to_string()}]});
             }
@@ -441,6 +466,55 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
         "features.list" => {
             let db = str_arg(args, "db");
             features_list(db.as_deref(), str_arg(args, "layer_id").as_deref())
+        }
+        "layer.import" => {
+            let out = run(Command::LayerImport {
+                path: str_arg(args, "path").unwrap_or_default(),
+                format: str_arg(args, "format"),
+                layer_id: str_arg(args, "layer_id"),
+            });
+            if out.get("error").is_some() {
+                return json!({"content": [{"type": "text", "text": out.to_string()}]});
+            }
+            let db = str_arg(args, "db");
+            let layer = out
+                .get("layer")
+                .and_then(|v| v.as_str())
+                .unwrap_or("import");
+            let name = out.get("name").and_then(|v| v.as_str()).unwrap_or("import");
+            let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+            let geom = hits
+                .as_array()
+                .map(|arr| {
+                    let mut kind = "point";
+                    for h in arr {
+                        if let Some(t) = h
+                            .get("geom")
+                            .and_then(|g| g.get("type"))
+                            .and_then(|t| t.as_str())
+                        {
+                            if t == "Polygon" {
+                                kind = "polygon";
+                                break;
+                            }
+                            if t == "LineString" {
+                                kind = "line";
+                            }
+                        }
+                    }
+                    kind
+                })
+                .unwrap_or("point");
+            let stored = ingest_hits(
+                db.as_deref(),
+                layer,
+                name,
+                "import",
+                geom,
+                &hits,
+                "layer.import",
+            );
+            json!({"import_result": out, "ingest": stored})
         }
         "export.png" => run(Command::ExportPng {
             width: args
@@ -619,7 +693,10 @@ fn main() {
                         db.as_deref(),
                         &slug,
                         format!("{key}={value}").as_str(),
+                        "overpass",
+                        "point",
                         &hits,
+                        "overpass.query",
                     );
                     show(
                         json!({"query_result": out, "ingest": stored}),
@@ -636,6 +713,70 @@ fn main() {
             json,
             "features.list",
         ),
+        Commands::LayerImport {
+            path,
+            format,
+            layer_id,
+            db,
+            json,
+        } => {
+            let out = run(Command::LayerImport {
+                path,
+                format,
+                layer_id,
+            });
+            if out.get("error").is_some() {
+                show(out, json, "layer.import");
+            } else {
+                let layer = out
+                    .get("layer")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("import")
+                    .to_string();
+                let name = out
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("import")
+                    .to_string();
+                let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+                let geom = hits
+                    .as_array()
+                    .map(|arr| {
+                        let mut kind = "point";
+                        for h in arr {
+                            if let Some(t) = h
+                                .get("geom")
+                                .and_then(|g| g.get("type"))
+                                .and_then(|t| t.as_str())
+                            {
+                                if t == "Polygon" {
+                                    kind = "polygon";
+                                    break;
+                                }
+                                if t == "LineString" {
+                                    kind = "line";
+                                }
+                            }
+                        }
+                        kind
+                    })
+                    .unwrap_or("point");
+                let stored = ingest_hits(
+                    db.as_deref(),
+                    &layer,
+                    &name,
+                    "import",
+                    geom,
+                    &hits,
+                    "layer.import",
+                );
+                show(
+                    json!({"import_result": out, "ingest": stored}),
+                    json,
+                    "layer.import",
+                );
+            }
+        }
         Commands::Mcp { connect } => run_mcp_stdio(connect),
     }
 }
@@ -645,14 +786,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_lists_nine_tools() {
+    fn catalog_lists_ten_tools() {
         let catalog = tools_list();
         let tools = catalog
             .get("tools")
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(tools.len(), 9);
+        assert_eq!(tools.len(), 10);
     }
 
     #[test]
@@ -760,7 +901,10 @@ mod tests {
             Some(db.as_str()),
             "amenity-pharmacy",
             "amenity=pharmacy",
+            "overpass",
+            "point",
             &hits,
+            "overpass.query",
         );
         assert_eq!(stored.get("ingested").and_then(|v| v.as_u64()), Some(1));
         let listed = features_list(Some(db.as_str()), Some("amenity-pharmacy"));
@@ -823,6 +967,37 @@ mod tests {
         // Listener dropped: nothing listens on this port anymore.
         let result = call_tool("layer.list", &serde_json::json!({}), Some(port));
         assert!(content_text(&result).contains("control unreachable"));
+    }
+
+    #[test]
+    fn layer_import_roundtrip_in_temp_db() {
+        let dir = std::env::temp_dir();
+        let mut src = dir.clone();
+        src.push(format!("qgis-test-import-{}.geojson", std::process::id()));
+        let doc = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"A"},"geometry":{"type":"Point","coordinates":[16.3,48.2]}},{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[[16.3,48.2],[16.4,48.25]]}}]}"#;
+        if std::fs::write(&src, doc).is_err() {
+            return;
+        }
+        let db = temp_db("import");
+        let result = call_tool(
+            "layer.import",
+            &serde_json::json!({"path": src.to_string_lossy(), "db": db}),
+            None,
+        );
+        let text = content_text(&result);
+        let _ = std::fs::remove_file(&src);
+        assert!(text.contains("\"ingested\":2"), "got: {text}");
+        let _ = std::fs::remove_file(temp_db("import"));
+    }
+
+    #[test]
+    fn layer_import_missing_file_is_typed_error() {
+        let result = call_tool(
+            "layer.import",
+            &serde_json::json!({"path": "definitely-not-here-xyz.geojson"}),
+            None,
+        );
+        assert!(content_text(&result).contains("read failed"));
     }
 
     #[test]

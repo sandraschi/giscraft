@@ -14,6 +14,7 @@ pub mod control;
 pub mod error;
 pub mod geo;
 pub mod geocode;
+pub mod import;
 pub mod overpass;
 pub mod project;
 pub mod tiles;
@@ -31,6 +32,7 @@ pub const CMD_LAYER_REMOVE: &str = "layer.remove";
 pub const CMD_GEOCODE_SEARCH: &str = "geocode.search";
 pub const CMD_OVERPASS_QUERY: &str = "overpass.query";
 pub const CMD_FEATURES_LIST: &str = "features.list";
+pub const CMD_LAYER_IMPORT: &str = "layer.import";
 pub const CMD_EXPORT_PNG: &str = "export.png";
 
 /// Bounded command bus. New capability = new variant + dispatch arm + test.
@@ -63,6 +65,11 @@ pub enum Command {
         east: Option<f64>,
         live: bool,
     },
+    LayerImport {
+        path: String,
+        format: Option<String>,
+        layer_id: Option<String>,
+    },
     ExportPng {
         width: Option<u32>,
         height: Option<u32>,
@@ -87,7 +94,7 @@ pub async fn dispatch(cmd: Command) -> Value {
             "commands": [
                 CMD_STATUS, CMD_PROJECT_STATUS,
                 CMD_LAYER_ADD, CMD_LAYER_LIST, CMD_LAYER_REMOVE,
-                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_EXPORT_PNG,
+                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_EXPORT_PNG,
             ],
             "agent_contract": "CLI-first: every command supports --json; `mcp` subcommand mirrors the same dispatch over stdio",
         }),
@@ -182,6 +189,86 @@ pub async fn dispatch(cmd: Command) -> Value {
                 Err(e) => json!({"error": e.to_string(), "op": "overpass.query"}),
             }
         }
+        Command::LayerImport {
+            path,
+            format,
+            layer_id,
+        } => {
+            if path.trim().is_empty() {
+                return json!({"error": "invalid input: path must not be empty", "op": "layer.import"});
+            }
+            let text = match tokio::fs::read_to_string(path.trim()).await {
+                Ok(t) => t,
+                Err(e) => {
+                    return json!({"error": format!("read failed: {e}"), "op": "layer.import"});
+                }
+            };
+            let fmt = format.as_deref().unwrap_or("auto").to_lowercase();
+            let auto_ext = std::path::Path::new(path.trim())
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let kind = if fmt == "auto" {
+                match auto_ext.as_str() {
+                    "geojson" | "json" => "geojson",
+                    "csv" | "txt" => "csv",
+                    other => {
+                        return json!({"error": format!("cannot detect format from .{other} (use geojson|csv)"), "op": "layer.import"});
+                    }
+                }
+            } else if fmt == "geojson" || fmt == "csv" {
+                fmt.as_str()
+            } else {
+                return json!({"error": "invalid input: format must be auto|geojson|csv", "op": "layer.import"});
+            };
+            let feats = match kind {
+                "geojson" => import::parse_geojson(&text),
+                _ => import::parse_csv(&text, None, None),
+            };
+            let feats = match feats {
+                Ok(f) => f,
+                Err(e) => return json!({"error": e.to_string(), "op": "layer.import"}),
+            };
+            let stem = std::path::Path::new(path.trim())
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("import")
+                .to_string();
+            let slug: String = layer_id.unwrap_or_else(|| {
+                stem.chars()
+                    .map(|c| {
+                        if c.is_alphanumeric() {
+                            c.to_ascii_lowercase()
+                        } else {
+                            '-'
+                        }
+                    })
+                    .collect::<String>()
+                    .trim_matches('-')
+                    .to_string()
+            });
+            let slug = if slug.is_empty() {
+                "import".to_string()
+            } else {
+                slug
+            };
+            let hits: Vec<Value> = feats
+                .iter()
+                .map(|f| {
+                    let mut h = serde_json::json!({
+                        "name": f.name, "kind": f.kind, "lng": f.lng, "lat": f.lat,
+                    });
+                    if let Some(g) = f.geom_json.as_ref() {
+                        if let Ok(gv) = serde_json::from_str::<Value>(g) {
+                            h["geom"] = gv;
+                        }
+                    }
+                    h
+                })
+                .collect();
+            json!({"layer": slug, "name": stem, "count": hits.len(), "hits": hits})
+        }
         Command::ExportPng {
             width: _,
             height: _,
@@ -203,7 +290,7 @@ mod tests {
             .and_then(|c| c.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(cmds.len(), 9);
+        assert_eq!(cmds.len(), 10);
     }
 
     #[tokio::test]
@@ -232,6 +319,40 @@ mod tests {
         })
         .await;
         assert_eq!(v.get("live").and_then(|b| b.as_bool()), Some(false));
+    }
+
+    #[tokio::test]
+    async fn import_geojson_file_roundtrip() {
+        let mut p = std::env::temp_dir();
+        p.push(format!("qgis-test-import-{}.geojson", std::process::id()));
+        let doc = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"A"},"geometry":{"type":"Point","coordinates":[16.3,48.2]}},{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[[16.3,48.2],[16.4,48.25]]}}]}"#;
+        if std::fs::write(&p, doc).is_err() {
+            return;
+        }
+        let v = dispatch(Command::LayerImport {
+            path: p.to_string_lossy().to_string(),
+            format: None,
+            layer_id: None,
+        })
+        .await;
+        let _ = std::fs::remove_file(&p);
+        assert_eq!(v.get("count").and_then(|n| n.as_u64()), Some(2));
+        assert!(v.get("layer").and_then(|s| s.as_str()).is_some());
+    }
+
+    #[tokio::test]
+    async fn import_missing_file_is_typed_error() {
+        let v = dispatch(Command::LayerImport {
+            path: "definitely-not-here-xyz.geojson".to_string(),
+            format: None,
+            layer_id: None,
+        })
+        .await;
+        assert!(v
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("")
+            .contains("read failed"));
     }
 
     #[test]

@@ -1,6 +1,13 @@
 # Changelog - qgiscraft-mcp
 
-## 2026-10-24 - Phase 2.0: control channel (`--control` / `mcp --connect`)
+## 2026-10-24 - Phase 2.1: menus wired (Vector/Raster/Database/Web/Processing)
+- Vector: import GeoJSON/CSV via file picker (validated, auto-detected), export selected layer as GeoJSON. New core `import.rs` (parse + export, 6 tests).
+- Raster: XYZ Tile Layer dialog (template validated); canvas renders the first visible raster layer, OSM default otherwise.
+- Web: XYZ preset gallery (OSM Standard/Humanitarian, Carto Dark, Esri Imagery) - one click swaps the basemap.
+- Database: New Scratch Layer dialog (point/line/polygon), QGIS equivalent.
+- Processing: OSM download dialog (key/value/use-view, worker thread, auto-ingest+fit) + Geocode-to-layer dialog.
+- New `layer.import` command + MCP tool + CLI (10/10). rfd native dialogs.
+- Gates green: 70 tests, clippy -D warnings, fmt, xtask ci.
 - App serves JSON-lines on 127.0.0.1 (`--control PORT`, `QGISCRAFT_CONTROL_PORT`): 7 methods (project.status, layer.add/list/remove, ui.inspect, map.fit, map.render), error+close on garbage, 4MB cap, 16-conn cap, no auth.
 - `mcp --connect PORT` forwards the 4 DB-touching tools to the live app (single writer); network tools stay local.
 - `core::control` owns framing/validation/client; app owns execution; live TCP tests (stub executor + garbage-closes-connection).

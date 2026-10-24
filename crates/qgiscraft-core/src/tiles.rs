@@ -105,22 +105,35 @@ pub fn tile_url(tile: Tile) -> String {
     expand_template(&tile_url_template(), tile)
 }
 
-fn cache_dir() -> std::path::PathBuf {
-    let mut p = std::env::temp_dir();
-    p.push("qgiscraft-tiles");
-    p
+/// Short hash to namespace the disk cache per tile template.
+/// Public so the app can key its texture cache the same way.
+pub fn template_key(template: &str) -> String {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in template.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    format!("{h:016x}")
 }
 
-/// Fetch one tile PNG (cache-first). Returns raw PNG bytes.
-pub fn fetch_tile_png(tile: Tile) -> Result<Vec<u8>, GisError> {
-    let mut path = cache_dir();
+/// Fetch one tile PNG with an explicit template (cache-first, namespaced).
+/// `fetch_tile_png` is this with the configured default template.
+pub fn fetch_tile_png_as(tile: Tile, template: &str) -> Result<Vec<u8>, GisError> {
+    let mut path = std::env::temp_dir();
+    path.push("qgiscraft-tiles");
+    path.push(template_key(template));
     path.push(format!("{}_{}_{}.png", tile.z, tile.x, tile.y));
     if let Ok(bytes) = std::fs::read(&path) {
         if !bytes.is_empty() {
             return Ok(bytes);
         }
     }
-    let url = tile_url(tile);
+    let url = expand_template(template, tile);
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err(GisError::InvalidInput(
+            "tile URL must start with http(s)://".to_string(),
+        ));
+    }
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .user_agent("qgiscraft-mcp/0.1 (dev spike, few tiles; OSM attribution shown)")
@@ -148,6 +161,11 @@ pub fn fetch_tile_png(tile: Tile) -> Result<Vec<u8>, GisError> {
     }
     let _ = std::fs::write(&path, &bytes);
     Ok(bytes)
+}
+
+/// Fetch one tile PNG (cache-first) with the configured default template.
+pub fn fetch_tile_png(tile: Tile) -> Result<Vec<u8>, GisError> {
+    fetch_tile_png_as(tile, &tile_url_template())
 }
 
 /// Decode PNG bytes to flat RGBA8 (row-major, top-down).

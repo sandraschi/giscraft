@@ -7,7 +7,9 @@ DONE:
 - MCP stdio: 9 tools, typed schemas. `mcp --connect PORT` forwards the DB-touching
 tools to the live app (single writer); see `docs/control-protocol.md`.
 - egui shell: DB-backed project, ear-clipped fills, per-layer palette, slippy zoom (wheel + Ctrl+wheel + pinch), pan, Fit data, F5 refresh.
-- Menus wired: Project (New armed/Refresh/Quit), Layer (add/remove/zoom-to/show-hide), View (zoom/fit/reset), Help (About); shortcuts.
+- Menus wired: Project (New armed/Refresh/Quit), Layer (add/remove/zoom-to/show-hide), View (zoom/fit/reset), Help (About), Settings (effective config); shortcuts.
+- Vector/Raster/Database/Web/Processing menus wired: GeoJSON+CSV import, GeoJSON export, XYZ tile layers + preset gallery, scratch layers, OSM-download + geocode dialogs (worker threads).
+- MCP: 10 tools incl. `layer.import`.
 - Geocode: demo + Photon live. Overpass: fenced builder + dry-run + live + `--ingest` (full geometry).
 - XYZ tile underlay (cached, progressive), Web Mercator canvas, pull-model BMP preview with fills.
 - Ways/polygons/lines with selected-layer labels; fill pixel-proven (`docs/map-preview.png`).
