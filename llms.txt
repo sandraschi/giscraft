@@ -10,6 +10,7 @@ Web Mercator canvas with tiles, live Overpass/Photon ingest.
 - Tools (9 MCP tools): docs/TOOLS.md
 - Config (`QGISCRAFT_*` env): docs/CONFIGURATION.md
 - Architecture (L1/L2/L3, command bus): docs/ARCHITECTURE.md
+- Data ecosystem (sources, standards, where your maps go): docs/ECOSYSTEM.md
 - QGIS wrappee + plugin strategy: docs/WRAPPEE.md, docs/plugins.md
 - Dev gates (clippy deny unwrap/panic, 56 tests): docs/DEVELOPMENT.md, AGENTS.md
 

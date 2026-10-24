@@ -45,6 +45,14 @@ run-app:
 run-app-smoke:
     $env:Path = "$env:USERPROFILE\\.cargo\\bin;$env:Path"; cargo run -p qgiscraft-app -- --smoke
 
+# Thin web driver (Track B seed): sidecar API + Vite console
+run-web:
+    $env:Path = "$env:USERPROFILE\\.cargo\\bin;$env:Path"; cargo run -p qgiscraft-web
+
+# Vite dev console on :11253 (proxies /api to the sidecar on :11254)
+run-console:
+    npm --prefix web run dev
+
 # Production build (GUI + MCP binaries)
 build-release:
     $env:Path = "$env:USERPROFILE\\.cargo\\bin;$env:Path"; cargo build --release --workspace

@@ -3,6 +3,12 @@
 QGIS-class GIS in pure Rust: a clean-room 1:1 clone shell for QGIS muscle
 memory, with a modern core, CLI + MCP first, and no 2005 backend cruft.
 
+**What for:** a workbench for asking questions of the world's free map
+(OpenStreetMap) and keeping the answers as your own map layers — scout
+locations, audit POIs, plan walks and hikes, verify what's really there.
+Type a question, get a layer, analyze it, export it — by hand or via an
+AI agent (MCP). Full picture: [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md).
+
 ## What this wraps
 
 **[QGIS](https://qgis.org)** (LTR 3.44), the free and open-source desktop GIS

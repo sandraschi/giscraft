@@ -1,5 +1,11 @@
 # Changelog - qgiscraft-mcp
 
+## 2026-10-24 - Phase 2.3: thin web driver (sidecar + console)
+- `qgiscraft-web` Axum sidecar on 11254 (Track B seed): GET /api/health|layers|features|geocode|overpass|preview.png, CORS open, serves `web/dist` when built.
+- Map console (`web/`, Vite+React+Leaflet, dev on 11253 proxied): Leaflet map + live layers sidebar, geocode demo/live, one-click Overpass ingest + fit, server-rendered preview link.
+- No new capability: same dispatch + store calls as MCP (duplicated thin glue; unify behind one service layer later — noted in gaps).
+- Gates green: 73 tests + `cargo build` web crate + `vite build` clean.
+
 ## 2026-10-24 - Phase 2.2: toolbox wired + buffer
 - Processing Toolbox dock is real: search field + 3 runnable algorithms (OSM download, Geocode, Buffer points); dead Buffer/Clip/Dissolve buttons removed.
 - New `processing.rs`: great-circle destination + `buffer_features` (circle polygons, closed rings, typed errors), 3 tests incl. C-shape area preservation pattern.

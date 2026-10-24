@@ -6,6 +6,7 @@
 | [WRAPPEE.md](WRAPPEE.md) | QGIS: what it is, official links, community |
 | [plugins.md](plugins.md) | Plugin strategy: MCP tools are the plugin system |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | L1/L2/L3, command bus, DB-as-project, stdio framing |
+| [ECOSYSTEM.md](ECOSYSTEM.md) | Sources, standards (GTFS et al.), where your maps go, walk-and-photo crossconnect |
 | [CONFIGURATION.md](CONFIGURATION.md) | Env vars (`QGISCRAFT_*`) |
 | [TOOLS.md](TOOLS.md) | All 9 MCP tools + CLI equivalents |
 | [target-app-parity.md](target-app-parity.md) | QGIS scope, oracle loop |

@@ -4,5 +4,8 @@
 *.db
 *.exe
 .DS_Store
+node_modules/
+**/node_modules/
+web/dist/
 # Storytold clean-room: oracle observations live here, never committed.
 /plan/
