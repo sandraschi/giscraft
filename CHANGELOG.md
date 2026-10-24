@@ -1,6 +1,12 @@
 # Changelog - qgiscraft-mcp
 
-## 2026-10-24 - Phase 0.5: contrast + Ctrl-wheel zoom
+## 2026-10-24 - Phase 0.6: first map render
+- Canvas draws ingested points (cyan, selected layer orange, off-canvas culled).
+- Ctrl-wheel zooms to cursor, drag pans, Fit data frames visible layers, F5 refreshes from DB.
+- Fit zoom range fixed 0.25..8 -> 0.25..64 with 20% padding (city bboxes no longer render tiny).
+- Shared `fit_view` between canvas and headless BMP preview; `--smoke` writes `qgiscraft-preview-<pid>.bmp`.
+- First light: 29 live Vienna pharmacies, see `docs/map-preview.png`.
+- Gates green: 34 tests (6 app incl. projection/fit/BMP), clippy -D warnings, fmt, xtask ci.
 - High-contrast dark visuals (near-black surfaces, bright selection/text).
 - Ctrl+wheel zooms the canvas (0.25x-8x); status bar shows live `1:denom (pct%)` + project file name.
 - Canvas has a zoom-scaled crosshair anchor + frame so zoom is visible pre-render.
