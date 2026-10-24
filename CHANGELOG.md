@@ -1,6 +1,9 @@
 # Changelog - qgiscraft-mcp
 
-## 2026-10-24 - Phase 2.4: shared math, canvas chrome, retry, dist
+## 2026-10-24 - Phase 2.5: worked recipe (bike shops) + basemap hardening
+- New `docs/WORKFLOWS.md`: end-to-end "Innere Stadt bike repair shops" recipe (tag choice with `craft=bicycle_repair` zero-hit lesson, 3 integration paths, rendered map `docs/map-bikeshops.png`).
+- Hardened basemap selection: raster layers need a *usable* template (`is_usable_template`: http(s) + {z}/{x}/{y}); legacy `xyz:osm` stubs no longer shadow the default with a broken URL. Seed writes full template.
+- Gates green: 82 tests, clippy -D warnings, fmt, xtask ci.
 - Single projection core: `tiles::{project, unproject, fit_view, recenter, meters_per_pixel, nice_scale_bar, layer_color}` with offline tests; app canvas/preview and web server use it (doubles as the fix for the degrees-vs-world01 fit bug class).
 - Canvas chrome: scale bar (nice 1/2/5 m/km), north arrow, per-layer color dots in the Layers dock, live `1:N + bar` readout.
 - Overpass retries (3 attempts, 2s/4s backoff) on 502/503/429/timeouts.

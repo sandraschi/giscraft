@@ -264,8 +264,9 @@ async fn preview_png(Query(q): Query<PreviewQuery>) -> axum::response::Response 
         let layers = qgiscraft_store::list_layers(&conn).unwrap_or_default();
         layers
             .iter()
-            .find(|l| l.visible && l.geom_type == "raster" && l.source.starts_with("xyz:"))
-            .and_then(|l| l.source.strip_prefix("xyz:"))
+            .filter(|l| l.visible && l.geom_type == "raster")
+            .filter_map(|l| l.source.strip_prefix("xyz:"))
+            .find(|t| qgiscraft_core::tiles::is_usable_template(t))
             .map(|t| t.to_string())
             .unwrap_or_else(qgiscraft_core::tiles::tile_url_template)
     };

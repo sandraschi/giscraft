@@ -49,12 +49,14 @@ struct IngestBatch {
 }
 
 /// Resolve the active tile template: first visible raster layer whose
-/// source is `xyz:<template>` wins; otherwise the configured default.
+/// source is a *usable* `xyz:<template>` wins; anything else (legacy stubs
+/// like `xyz:osm`, user typos) is skipped so it can never shadow the
+/// default basemap with a broken URL.
 fn resolve_tile_template(layers: &[LayerRow]) -> String {
     for l in layers {
         if l.visible && l.geom_type == "raster" {
             if let Some(t) = l.source.strip_prefix("xyz:") {
-                if !t.trim().is_empty() {
+                if tiles::is_usable_template(t) {
                     return t.to_string();
                 }
             }
@@ -206,7 +208,7 @@ impl QgisCraftApp {
                     let seed = store::StoredLayer::new(
                         "osm-basemap".to_string(),
                         "osm-basemap".to_string(),
-                        Some("xyz:osm".to_string()),
+                        Some(format!("xyz:{}", tiles::tile_url_template())),
                         Some("raster".to_string()),
                         Some("EPSG:3857".to_string()),
                     );
@@ -390,7 +392,7 @@ impl QgisCraftApp {
                     let seed = store::StoredLayer::new(
                         "osm-basemap".to_string(),
                         "osm-basemap".to_string(),
-                        Some("xyz:osm".to_string()),
+                        Some(format!("xyz:{}", tiles::tile_url_template())),
                         Some("raster".to_string()),
                         Some("EPSG:3857".to_string()),
                     );
@@ -600,14 +602,8 @@ impl QgisCraftApp {
             self.push_log("name must not be empty".to_string());
             return;
         }
-        for must in ["{z}", "{x}", "{y}"] {
-            if !url.contains(must) {
-                self.push_log(format!("URL template needs {must}"));
-                return;
-            }
-        }
-        if !(url.starts_with("https://") || url.starts_with("http://")) {
-            self.push_log("URL must start with http(s)://".to_string());
+        if !tiles::is_usable_template(url) {
+            self.push_log("URL must be http(s) with {z}/{x}/{y}".to_string());
             return;
         }
         let id = slug(name);

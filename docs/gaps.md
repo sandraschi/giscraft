@@ -15,6 +15,7 @@ DONE:
 - Ways/polygons/lines with selected-layer labels; fill pixel-proven (`docs/map-preview.png`).
 - Standard readme stack + plugin strategy (MCP tools are the plugin system) + data ecosystem doc (sources, GTFS et al., where your maps go, walk-and-photo crossconnect).
 - Track B seed: Axum sidecar (11254) + React/Leaflet console (11253, proxied) — same command bus over REST, no new capabilities.
+- Worked recipes in docs/WORKFLOWS.md (bike-repair-shops walkthrough: tag choice, 3 integration paths, rendered map).
 - Oracle rig: QGIS 3.44.15 LTR side-by-side; `plan/qgis/` observations (gitignored); `docs/ui-parity.md`.
 - Single projection core (`tiles::project/unproject/fit_view/recenter/meters_per_pixel/nice_scale_bar/layer_color`); app + headless BMP share it, web uses it for fit/tiles.
 - Overpass retries (3 attempts, backoff) on 502/503/429/timeouts; public-API flakiness no longer kills a demo.

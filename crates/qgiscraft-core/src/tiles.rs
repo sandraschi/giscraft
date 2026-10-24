@@ -264,6 +264,18 @@ pub fn tile_url(tile: Tile) -> String {
     expand_template(&tile_url_template(), tile)
 }
 
+/// A template is usable when it has all three placeholders and an
+/// http(s) URL around them. Raster layers with anything else (legacy
+/// stubs like `xyz:osm`) are ignored by the renderer instead of
+/// shadowing the default basemap with a broken URL.
+pub fn is_usable_template(template: &str) -> bool {
+    let t = template.trim();
+    (t.starts_with("https://") || t.starts_with("http://"))
+        && t.contains("{z}")
+        && t.contains("{x}")
+        && t.contains("{y}")
+}
+
 /// Short hash to namespace the disk cache per tile template.
 /// Public so the app can key its texture cache the same way.
 pub fn template_key(template: &str) -> String {
@@ -396,6 +408,19 @@ mod tests {
     #[test]
     fn template_is_nonempty() {
         assert!(!tile_url_template().trim().is_empty());
+    }
+
+    #[test]
+    fn unusable_templates_rejected() {
+        assert!(is_usable_template(
+            "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+        ));
+        assert!(!is_usable_template("xyz:osm"));
+        assert!(!is_usable_template("https://tiles.example.org/{z}/{x}.png"));
+        assert!(!is_usable_template(""));
+        assert!(!is_usable_template(
+            "ftp://tiles.example.org/{z}/{x}/{y}.png"
+        ));
     }
 
     #[test]
