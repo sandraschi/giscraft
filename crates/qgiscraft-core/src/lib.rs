@@ -16,6 +16,7 @@ pub mod geo;
 pub mod geocode;
 pub mod import;
 pub mod overpass;
+pub mod processing;
 pub mod project;
 pub mod tiles;
 pub mod triangulate;

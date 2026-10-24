@@ -36,6 +36,9 @@ enum Dialog {
         query: String,
         limit: String,
     },
+    Buffer {
+        radius_m: String,
+    },
 }
 
 /// One finished background download, ready to ingest on the UI thread.
@@ -107,6 +110,7 @@ struct QgisCraftApp {
     show_about: bool,
     show_settings: bool,
     dialog: Dialog,
+    toolbox_query: String,
     pending: Option<std::sync::mpsc::Receiver<Result<IngestBatch, String>>>,
     tile_template: String,
     textures: HashMap<String, egui::TextureHandle>,
@@ -212,6 +216,7 @@ impl QgisCraftApp {
             show_about: false,
             show_settings: false,
             dialog: Dialog::None,
+            toolbox_query: String::new(),
             pending: None,
             tile_template: tiles::tile_url_template(),
             textures: HashMap::new(),
@@ -501,6 +506,7 @@ impl QgisCraftApp {
         &mut self,
         layer_id: &str,
         layer_name: &str,
+        source: &str,
         geom_type: &str,
         feats: &[import::RawFeature],
     ) {
@@ -509,7 +515,7 @@ impl QgisCraftApp {
                 let layer = store::StoredLayer {
                     id: layer_id.to_string(),
                     name: layer_name.to_string(),
-                    source: "import".to_string(),
+                    source: source.to_string(),
                     geom_type: geom_type.to_string(),
                     crs: "EPSG:4326".to_string(),
                     visible: true,
@@ -565,7 +571,7 @@ impl QgisCraftApp {
                             }
                         })
                         .unwrap_or("point");
-                    self.persist_batch(&layer_id, &stem, geom, &feats);
+                    self.persist_batch(&layer_id, &stem, "import", geom, &feats);
                 }
                 Err(e) => self.push_log(format!("parse failed: {e}")),
             },
@@ -582,7 +588,7 @@ impl QgisCraftApp {
         let layer_id = slug(&stem);
         match std::fs::read_to_string(path) {
             Ok(text) => match import::parse_csv(&text, None, None) {
-                Ok(feats) => self.persist_batch(&layer_id, &stem, "point", &feats),
+                Ok(feats) => self.persist_batch(&layer_id, &stem, "import", "point", &feats),
                 Err(e) => self.push_log(format!("parse failed: {e}")),
             },
             Err(e) => self.push_log(format!("read failed: {e}")),
@@ -823,6 +829,58 @@ impl QgisCraftApp {
         });
     }
 
+    /// Processing: buffer the selected layer's points (worker thread).
+    /// Polygons out, same centroid in. Non-point features pass through.
+    fn run_buffer(&mut self, radius_m: f64) {
+        if !radius_m.is_finite() || radius_m <= 0.0 || radius_m > 1_000_000.0 {
+            self.push_log("radius must be 0..1000000 m".to_string());
+            return;
+        }
+        let Some(id) = self.selected.clone() else {
+            self.push_log("nothing selected".to_string());
+            return;
+        };
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.pending = Some(rx);
+        self.push_log(format!("buffering {id} by {radius_m} m ..."));
+        std::thread::spawn(move || {
+            let out: Result<IngestBatch, String> = (|| {
+                let conn = store::open_default().map_err(|e| e.to_string())?;
+                let feats =
+                    store::list_features(&conn, Some(id.as_str())).map_err(|e| e.to_string())?;
+                let raw: Vec<qgiscraft_core::import::RawFeature> = feats
+                    .iter()
+                    .map(|f| qgiscraft_core::import::RawFeature {
+                        name: f.name.clone(),
+                        kind: f.kind.clone(),
+                        lng: f.lng,
+                        lat: f.lat,
+                        geom_json: f.geom_json.clone(),
+                    })
+                    .collect();
+                let buffered = qgiscraft_core::processing::buffer_features(&raw, radius_m, 32)
+                    .map_err(|e| e.to_string())?;
+                let features: Vec<store::StoredFeature> = buffered
+                    .into_iter()
+                    .map(|f| store::StoredFeature {
+                        layer_id: String::new(),
+                        name: f.name,
+                        kind: "way".to_string(),
+                        lng: f.lng,
+                        lat: f.lat,
+                        geom_json: f.geom_json,
+                    })
+                    .collect();
+                Ok(IngestBatch {
+                    layer_id: format!("{id}-buffer"),
+                    layer_name: format!("{id} buffered {radius_m}m"),
+                    features,
+                })
+            })();
+            let _ = tx.send(out);
+        });
+    }
+
     /// Current view bbox in lng/lat (for "use map canvas extent").
     fn view_bbox(&self) -> Option<qgiscraft_core::geo::Bbox> {
         let rect = self.last_rect?;
@@ -996,6 +1054,32 @@ impl QgisCraftApp {
                         self.start_geocode(&q, lim);
                         keep = false;
                     }
+                } else if cancel {
+                    keep = false;
+                }
+            }
+            Dialog::Buffer { radius_m } => {
+                let mut cancel = false;
+                let mut submit: Option<f64> = None;
+                egui::Window::new("Buffer points").show(ui.ctx(), |ui| {
+                    ui.label("Radius in meters (selected layer, points only):");
+                    ui.text_edit_singleline(radius_m);
+                    ui.horizontal(|ui| {
+                        if ui.button("Buffer").clicked() {
+                            if let Ok(r) = radius_m.trim().parse::<f64>() {
+                                submit = Some(r);
+                            } else {
+                                self.push_log("radius must be a number".to_string());
+                            }
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+                if let Some(r) = submit {
+                    self.run_buffer(r);
+                    keep = false;
                 } else if cancel {
                     keep = false;
                 }
@@ -1562,10 +1646,47 @@ impl eframe::App for QgisCraftApp {
             ui.label("Single / Categorized / Graduated (Phase 1)");
             ui.separator();
             ui.heading("Processing Toolbox");
-            for tool in ["Buffer", "Clip", "Dissolve", "Reproject", "Hillshade"] {
-                if ui.button(tool).clicked() {
-                    self.push_log(format!("{tool} -> unsupported in Phase 0 (typed error)"));
+            ui.text_edit_singleline(&mut self.toolbox_query);
+            ui.label("Search algorithms. Click to run (dialog opens).");
+            let query = self.toolbox_query.trim().to_lowercase();
+            let mut open: Option<Dialog> = None;
+            for (name, about) in [
+                (
+                    "Download OSM features",
+                    "Overpass tag query into a new layer",
+                ),
+                (
+                    "Geocode places to layer",
+                    "Photon search into a point layer",
+                ),
+                ("Buffer points", "Circle polygons around selected points"),
+            ] {
+                if !query.is_empty()
+                    && !name.to_lowercase().contains(&query)
+                    && !about.to_lowercase().contains(&query)
+                {
+                    continue;
                 }
+                if ui.button(name).clicked() {
+                    self.push_log(about.to_string());
+                    open = Some(match name {
+                        "Download OSM features" => Dialog::OsmDownload {
+                            key: "amenity".to_string(),
+                            value: "pharmacy".to_string(),
+                            use_view: true,
+                        },
+                        "Geocode places to layer" => Dialog::Geocode {
+                            query: String::new(),
+                            limit: "5".to_string(),
+                        },
+                        _ => Dialog::Buffer {
+                            radius_m: "500".to_string(),
+                        },
+                    });
+                }
+            }
+            if let Some(dlg) = open {
+                self.dialog = dlg;
             }
         });
 

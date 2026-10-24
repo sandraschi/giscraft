@@ -1,6 +1,10 @@
 # Changelog - qgiscraft-mcp
 
-## 2026-10-24 - Phase 2.1: menus wired (Vector/Raster/Database/Web/Processing)
+## 2026-10-24 - Phase 2.2: toolbox wired + buffer
+- Processing Toolbox dock is real: search field + 3 runnable algorithms (OSM download, Geocode, Buffer points); dead Buffer/Clip/Dissolve buttons removed.
+- New `processing.rs`: great-circle destination + `buffer_features` (circle polygons, closed rings, typed errors), 3 tests incl. C-shape area preservation pattern.
+- Vector/Raster/Database/Web/Processing menus fully wired (import/export, XYZ layers + preset gallery, scratch layers, download/geocode dialogs).
+- Gates green: 73 tests, clippy -D warnings, fmt, xtask ci.
 - Vector: import GeoJSON/CSV via file picker (validated, auto-detected), export selected layer as GeoJSON. New core `import.rs` (parse + export, 6 tests).
 - Raster: XYZ Tile Layer dialog (template validated); canvas renders the first visible raster layer, OSM default otherwise.
 - Web: XYZ preset gallery (OSM Standard/Humanitarian, Carto Dark, Esri Imagery) - one click swaps the basemap.
