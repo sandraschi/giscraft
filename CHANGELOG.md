@@ -1,6 +1,10 @@
 # Changelog - qgiscraft-mcp
 
-## 2026-10-24 - Phase 1.0: menus wired
+## 2026-10-24 - Phase 1.1: concave polygon fill
+- Hand-rolled ear clipping in core (`triangulate.rs`, no new deps, panic-free, tested: square/triangle/C-shape area/concave/degenerate).
+- Canvas: `Mesh` fill (35% alpha) + outline; preview: half-space scanline fill blended over tiles.
+- Fill proven by pixel test (exact blended bytes at view center), not just eyeballing.
+- Gates green: 54 tests, clippy -D warnings, fmt, xtask ci.
 - Project menu: New (double-click armed wipe + reseed), Refresh, Quit.
 - Layer menu: Add demo layer, Remove selected, Zoom to selected, Show/Hide all.
 - View menu: Zoom in/out, Fit data, Reset view (Wien z15). F5/Del/Ctrl+Plus/Minus/0 shortcuts.

@@ -16,6 +16,7 @@ pub mod geocode;
 pub mod overpass;
 pub mod project;
 pub mod tiles;
+pub mod triangulate;
 
 use error::GisError;
 use serde_json::{json, Value};

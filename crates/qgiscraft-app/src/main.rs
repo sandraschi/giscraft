@@ -10,6 +10,7 @@
 
 use eframe::egui;
 use qgiscraft_core::tiles;
+use qgiscraft_core::triangulate;
 use qgiscraft_store as store;
 use std::collections::HashMap;
 
@@ -744,8 +745,34 @@ impl eframe::App for QgisCraftApp {
                 let selected = self.selected.as_ref() == Some(&feat.layer_id);
                 match parse_geom(feat) {
                     Some(Geom::Poly(ring)) => {
-                        // Outline only: proper concave fill needs earcut
-                        // triangulation (follow-up, not convex hull).
+                        // Ear-clipped fill (concave-safe) + outline.
+                        let tris = triangulate::earcut_tris(&ring);
+                        let mut mesh = egui::Mesh::default();
+                        let fill = egui::Color32::from_rgba_unmultiplied(
+                            color.r(),
+                            color.g(),
+                            color.b(),
+                            70,
+                        );
+                        for t in tris.as_chunks::<3>().0 {
+                            let [ia, ib, ic] = *t;
+                            for idx in [ia, ib, ic] {
+                                if let Some(&(lng, lat)) = ring.get(idx) {
+                                    mesh.colored_vertex(
+                                        project(
+                                            lng,
+                                            lat,
+                                            self.center_lng,
+                                            self.center_lat,
+                                            self.zoom,
+                                            &rect,
+                                        ),
+                                        fill,
+                                    );
+                                }
+                            }
+                        }
+                        painter.add(mesh);
                         let pts: Vec<egui::Pos2> = ring
                             .iter()
                             .map(|(lng, lat)| {
@@ -944,7 +971,8 @@ fn render_preview(
             px[i + 2] = 5;
         }
     }
-    let mut plot = |x: i32, y: i32, b: u8, g: u8, r: u8| {
+    // Pixel writer: explicit buffer param so helpers stay borrow-free.
+    let plot = |px: &mut [u8], x: i32, y: i32, b: u8, g: u8, r: u8| {
         if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
             return;
         }
@@ -954,6 +982,71 @@ fn render_preview(
             px[i] = b;
             px[i + 1] = g;
             px[i + 2] = r;
+        }
+    };
+    let blend_over = |px: &mut [u8], x: i32, y: i32, b: u8, g: u8, r: u8| {
+        if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
+            return;
+        }
+        let i = (((height as i32 - 1 - y) as u32 * width + x as u32) * 3) as usize;
+        if i + 2 < px.len() {
+            // 35% foreground over background, integer math, no overflow.
+            px[i] = ((b as u32 * 35 + px[i] as u32 * 65) / 100) as u8;
+            px[i + 1] = ((g as u32 * 35 + px[i + 1] as u32 * 65) / 100) as u8;
+            px[i + 2] = ((r as u32 * 35 + px[i + 2] as u32 * 65) / 100) as u8;
+        }
+    };
+    // DDA segment rasterizer over an explicit buffer.
+    let seg = |px: &mut [u8], x0: i32, y0: i32, x1: i32, y1: i32, b: u8, g: u8, r: u8| {
+        let steps = (x1 - x0).abs().max((y1 - y0).abs()).max(1);
+        for i in 0..=steps {
+            let t = i as f32 / steps as f32;
+            plot(
+                px,
+                (x0 as f32 + (x1 - x0) as f32 * t).round() as i32,
+                (y0 as f32 + (y1 - y0) as f32 * t).round() as i32,
+                b,
+                g,
+                r,
+            );
+        }
+    };
+    // Half-space triangle fill over an explicit buffer (either winding).
+    let fill_tri = |px: &mut [u8],
+                    ax: i32,
+                    ay: i32,
+                    bx: i32,
+                    by: i32,
+                    cx: i32,
+                    cy: i32,
+                    b: u8,
+                    g: u8,
+                    r: u8| {
+        let edge = |px0: i32, py0: i32, qx: i32, qy: i32, rx: i32, ry: i32| {
+            (rx - px0) * (qy - py0) - (ry - py0) * (qx - px0)
+        };
+        let area = edge(ax, ay, bx, by, cx, cy);
+        if area == 0 {
+            return;
+        }
+        let min_x = ax.min(bx).min(cx).max(0);
+        let max_x = (ax.max(bx).max(cx) + 1).min(width as i32 - 1);
+        let min_y = ay.min(by).min(cy).max(0);
+        let max_y = (ay.max(by).max(cy) + 1).min(height as i32 - 1);
+        for py in min_y..=max_y {
+            for qx in min_x..=max_x {
+                let w0 = edge(bx, by, cx, cy, qx, py);
+                let w1 = edge(cx, cy, ax, ay, qx, py);
+                let w2 = edge(ax, ay, bx, by, qx, py);
+                let inside = if area > 0 {
+                    w0 >= 0 && w1 >= 0 && w2 >= 0
+                } else {
+                    w0 <= 0 && w1 <= 0 && w2 <= 0
+                };
+                if inside {
+                    blend_over(px, qx, py, b, g, r);
+                }
+            }
         }
     };
     // Tiles first (best-effort: any failure leaves dark bg, never aborts).
@@ -991,7 +1084,7 @@ fn render_preview(
                             .clamp(0, th as i64 - 1) as u32;
                         let si = ((syy * tw + sxx) * 4) as usize;
                         if si + 2 < rgba.len() {
-                            plot(dx, dy, rgba[si + 2], rgba[si + 1], rgba[si]);
+                            plot(&mut px, dx, dy, rgba[si + 2], rgba[si + 1], rgba[si]);
                         }
                     }
                 }
@@ -1007,25 +1100,34 @@ fn render_preview(
         if !vis {
             continue;
         }
-        // Same palette as the canvas; DDA rasterization for lines/rings.
+        // Same palette as the canvas; DDA outlines, earcut fills.
         let c = layer_color(feat.layer_id.as_str());
         let (cr, cg, cb) = (c.r(), c.g(), c.b());
-        let mut seg = |x0: i32, y0: i32, x1: i32, y1: i32| {
-            let steps = (x1 - x0).abs().max((y1 - y0).abs()).max(1);
-            for i in 0..=steps {
-                let t = i as f32 / steps as f32;
-                plot(
-                    (x0 as f32 + (x1 - x0) as f32 * t).round() as i32,
-                    (y0 as f32 + (y1 - y0) as f32 * t).round() as i32,
-                    cb,
-                    cg,
-                    cr,
-                );
-            }
-        };
         match parse_geom(feat) {
-            Some(Geom::Poly(ring)) | Some(Geom::Line(ring)) => {
-                let closed = matches!(parse_geom(feat), Some(Geom::Poly(_)));
+            Some(Geom::Poly(ring)) => {
+                // Ear-clipped fill first, outline on top.
+                let tris = triangulate::earcut_tris(&ring);
+                for t in tris.as_chunks::<3>().0 {
+                    let [ia, ib, ic] = *t;
+                    if let (Some(a), Some(b), Some(c)) = (ring.get(ia), ring.get(ib), ring.get(ic))
+                    {
+                        let pa = project(a.0, a.1, clng, clat, zoom, &rect);
+                        let pb = project(b.0, b.1, clng, clat, zoom, &rect);
+                        let pc = project(c.0, c.1, clng, clat, zoom, &rect);
+                        fill_tri(
+                            &mut px,
+                            pa.x.round() as i32,
+                            pa.y.round() as i32,
+                            pb.x.round() as i32,
+                            pb.y.round() as i32,
+                            pc.x.round() as i32,
+                            pc.y.round() as i32,
+                            cb,
+                            cg,
+                            cr,
+                        );
+                    }
+                }
                 let pts: Vec<(i32, i32)> = ring
                     .iter()
                     .map(|(lng, lat)| {
@@ -1034,11 +1136,32 @@ fn render_preview(
                     })
                     .collect();
                 let n = pts.len();
-                let end = if closed { n } else { n.saturating_sub(1) };
-                for i in 0..end {
+                for i in 0..n {
                     let (x0, y0) = pts[i % n];
                     let (x1, y1) = pts[(i + 1) % n];
-                    seg(x0, y0, x1, y1);
+                    seg(&mut px, x0, y0, x1, y1, cb, cg, cr);
+                }
+            }
+            Some(Geom::Line(line)) => {
+                let pts: Vec<(i32, i32)> = line
+                    .iter()
+                    .map(|(lng, lat)| {
+                        let p = project(*lng, *lat, clng, clat, zoom, &rect);
+                        (p.x.round() as i32, p.y.round() as i32)
+                    })
+                    .collect();
+                let n = pts.len();
+                for i in 0..n.saturating_sub(1) {
+                    seg(
+                        &mut px,
+                        pts[i].0,
+                        pts[i].1,
+                        pts[i + 1].0,
+                        pts[i + 1].1,
+                        cb,
+                        cg,
+                        cr,
+                    );
                 }
             }
             None => {
@@ -1049,7 +1172,7 @@ fn render_preview(
                 for dy in -2..=2 {
                     for dx in -2..=2 {
                         if dx * dx + dy * dy <= 6 {
-                            plot(cx + dx, cy + dy, cb, cg, cr);
+                            plot(&mut px, cx + dx, cy + dy, cb, cg, cr);
                         }
                     }
                 }
@@ -1226,6 +1349,31 @@ mod tests {
         if let Ok(bytes) = bmp {
             assert!(bytes.len() > 54);
             assert_eq!(&bytes[0..2], b"BM");
+        }
+    }
+
+    #[test]
+    fn polygon_fill_paints_interior() {
+        // One square polygon, no tiles: the view center must carry the
+        // blended fill color (35% layer color over near-black bg).
+        let feat = geom_feature(
+            r#"{"type":"Polygon","coordinates":[[[16.3,48.2],[16.4,48.2],[16.4,48.25],[16.3,48.2]]]}"#,
+        );
+        let bmp = render_preview(&[feat], &test_layers(), 320, 200, false);
+        assert!(bmp.is_ok());
+        if let Ok(bytes) = bmp {
+            let w = 320_usize;
+            let h = 200_usize;
+            let stride = w * 3; // 960, already multiple of 4
+            let (cx, cy) = (160_usize, 100_usize);
+            let i = 54 + (h - 1 - cy) * stride + cx * 3;
+            let c = layer_color("rx");
+            let exp_b = (u32::from(c.b()) * 35 + 7 * 65) / 100;
+            let exp_g = (u32::from(c.g()) * 35 + 5 * 65) / 100;
+            let exp_r = (u32::from(c.r()) * 35 + 5 * 65) / 100;
+            assert_eq!(bytes[i] as u32, exp_b, "fill blue channel");
+            assert_eq!(bytes[i + 1] as u32, exp_g, "fill green channel");
+            assert_eq!(bytes[i + 2] as u32, exp_r, "fill red channel");
         }
     }
 
