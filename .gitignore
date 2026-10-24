@@ -4,3 +4,5 @@
 *.db
 *.exe
 .DS_Store
+# Storytold clean-room: oracle observations live here, never committed.
+/plan/

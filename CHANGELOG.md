@@ -1,6 +1,10 @@
 # Changelog - qgiscraft-mcp
 
-## 2026-10-24 - Phase 1.1: concave polygon fill
+## 2026-10-24 - Phase 1.2: zoom that works + QGIS oracle installed
+- Fixed dead Ctrl-wheel zoom: egui routes Ctrl+scroll into `zoom_delta()` and empties the scroll channel by design; now reads the factor path AND plain-wheel (QGIS default) smoothed deltas. Found by reading egui 0.37 wheel_state source, not by guessing.
+- QGIS 3.44.15-Solothurn LTR installed side-by-side (`C:\Program Files\QGIS 3.44.15`, `qgis-ltr.bat`).
+- Oracle rig: `plan/qgis/` (gitignored, local-only) with `02-ui-ux.md` observation checklist; `docs/ui-parity.md` starter scorecard, honest zero.
+- Gates green: 54 tests, clippy -D warnings, fmt, xtask ci.
 - Hand-rolled ear clipping in core (`triangulate.rs`, no new deps, panic-free, tested: square/triangle/C-shape area/concave/degenerate).
 - Canvas: `Mesh` fill (35% alpha) + outline; preview: half-space scanline fill blended over tiles.
 - Fill proven by pixel test (exact blended bytes at view center), not just eyeballing.

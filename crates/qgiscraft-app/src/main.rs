@@ -275,6 +275,17 @@ fn parse_geom(feat: &store::StoredFeature) -> Option<Geom> {
 
 /// Frame visible features with padding. No-op when nothing is visible.
 impl QgisCraftApp {
+    /// Zoom to cursor: anchor the geo under the pointer, then move.
+    fn zoom_to(&mut self, anchor: egui::Pos2, target: f32, rect: &egui::Rect) {
+        let (glng, glat) = unproject(anchor, self.center_lng, self.center_lat, self.zoom, rect);
+        self.zoom = target.clamp(2.0, 19.0);
+        let world = world_px(self.zoom);
+        let c = rect.center();
+        self.center_lng = merc_lng(merc_x(glng, world) - (anchor.x - c.x) as f64, world);
+        self.center_lat = merc_lat(merc_y(glat, world) - (anchor.y - c.y) as f64, world);
+        self.status = "zoom".to_string();
+    }
+
     /// Frame visible features (or just `fit_only` for Zoom to layer).
     fn fit_to_data(&mut self, rect: &egui::Rect) {
         let only = self.fit_only.clone();
@@ -655,7 +666,7 @@ impl eframe::App for QgisCraftApp {
                 .filter(|f| self.is_visible(f.layer_id.as_str()))
                 .count();
             ui.heading(format!(
-                "Map canvas ({shown} points, z{:.1}, zoom: Ctrl+wheel)",
+                "Map canvas ({shown} points, z{:.1}, zoom: wheel)",
                 self.zoom
             ));
             let (resp, painter) =
@@ -857,26 +868,26 @@ impl eframe::App for QgisCraftApp {
                 egui::FontId::proportional(10.0),
                 egui::Color32::from_gray(0xb0),
             );
-            // eframe feeds wheel + trackpad into the smooth channel;
-            // raw deltas are not exposed on this egui version.
-            let (ctrl, scroll, hover) = ui.input(|input| {
+            // Wheel zoom (QGIS default: plain wheel zooms; Ctrl+wheel and
+            // pinch arrive as a multiplicative factor - egui routes
+            // Ctrl+scroll into zoom_delta and leaves the scroll channel
+            // empty by design, so both paths must be read).
+            let (zoom_factor, scroll, hover) = ui.input(|input| {
                 (
-                    input.modifiers.ctrl,
+                    input.zoom_delta(),
                     input.smooth_scroll_delta().y,
                     input.pointer.hover_pos(),
                 )
             });
-            if resp.hovered() && ctrl && scroll != 0.0 {
-                // Zoom to cursor: anchor the geo under the pointer.
+            if resp.hovered() {
                 let anchor = hover.unwrap_or(rect.center());
-                let (glng, glat) =
-                    unproject(anchor, self.center_lng, self.center_lat, self.zoom, &rect);
-                self.zoom = (self.zoom + scroll * 0.01).clamp(2.0, 19.0);
-                let world = world_px(self.zoom);
-                let c = rect.center();
-                self.center_lng = merc_lng(merc_x(glng, world) - (anchor.x - c.x) as f64, world);
-                self.center_lat = merc_lat(merc_y(glat, world) - (anchor.y - c.y) as f64, world);
-                self.status = "zoom".to_string();
+                if zoom_factor != 1.0 {
+                    let target = self.zoom + zoom_factor.log2().clamp(-2.0, 2.0);
+                    self.zoom_to(anchor, target, &rect);
+                } else if scroll != 0.0 {
+                    // Smoothed line deltas: ~+0.2 zoom per wheel notch.
+                    self.zoom_to(anchor, self.zoom + scroll * 0.005, &rect);
+                }
             }
             if resp.dragged() {
                 // Grab-and-drag: content follows the cursor.

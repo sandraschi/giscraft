@@ -1,20 +1,22 @@
-# docs/gaps.md - ranked work list (v1.1: concave fill landed)
+# docs/gaps.md - ranked work list (v1.2: zoom fixed, oracle installed)
 
 DONE:
 - Core `Command` bus (9 cmds) + validation hardening.
 - Store SQLite: layers + features (+geom_json) + visible + counts + migrations + clear_all.
 - CLI/MCP `--db` persistence (add/list/remove roundtrip proven).
 - MCP stdio: 9 tools, typed schemas.
-- egui shell: DB-backed project, high-contrast theme, ear-clipped polygon fill, per-layer palette, Ctrl-wheel zoom-to-cursor (slippy), pan, Fit data, F5 refresh.
+- egui shell: DB-backed project, ear-clipped fills, per-layer palette, slippy zoom (wheel + Ctrl+wheel + pinch), pan, Fit data, F5 refresh.
 - Menus wired: Project (New armed/Refresh/Quit), Layer (add/remove/zoom-to/show-hide), View (zoom/fit/reset), Help (About); shortcuts.
 - Geocode: demo + Photon live. Overpass: fenced builder + dry-run + live + `--ingest` (full geometry).
 - XYZ tile underlay (cached, progressive), Web Mercator canvas, pull-model BMP preview with fills.
 - Ways/polygons/lines with selected-layer labels; fill pixel-proven (`docs/map-preview.png`).
+- Oracle rig: QGIS 3.44.15 LTR side-by-side; `plan/qgis/` observations (gitignored); `docs/ui-parity.md`.
 
 NEXT (in sequence):
-1. Symbology single/categorized/graduated dialogs (Layer > Styling).
-2. GeoJSON/KML/GPX file import (Layer > Add Vector) + Delimited Text (CSV).
-3. Processing Buffer/Clip/Reproject (pure Rust, no GDAL yet).
-4. Print Layout export PNG.
-5. OSM Austria PBF bulk loader.
-6. Async tile worker (replace 2-fetch/frame sync cap).
+1. First oracle pass: canvas nav bindings (wheel/Ctrl-wheel/drag/box), menu inventory, per plan/qgis/02-ui-ux.md.
+2. Symbology single/categorized/graduated dialogs (Layer > Styling).
+3. GeoJSON/KML/GPX file import (Layer > Add Vector) + Delimited Text (CSV).
+4. Processing Buffer/Clip/Reproject (pure Rust, no GDAL yet).
+5. Print Layout export PNG.
+6. OSM Austria PBF bulk loader.
+7. Async tile worker (replace 2-fetch/frame sync cap).
