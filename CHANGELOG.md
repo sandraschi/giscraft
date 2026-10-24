@@ -1,6 +1,12 @@
 # Changelog - qgiscraft-mcp
 
-## 2026-10-24 - Phase 0.9: ways and polygons
+## 2026-10-24 - Phase 1.0: menus wired
+- Project menu: New (double-click armed wipe + reseed), Refresh, Quit.
+- Layer menu: Add demo layer, Remove selected, Zoom to selected, Show/Hide all.
+- View menu: Zoom in/out, Fit data, Reset view (Wien z15). F5/Del/Ctrl+Plus/Minus/0 shortcuts.
+- Help > About window (version, OSM attribution, workflow hint).
+- `clear_all` store fn + test; zoom-to-layer via `fit_view(only=)`.
+- Gates green: 48 tests, clippy -D warnings, fmt, xtask ci.
 - Overpass `out geom`: ways distill to LineString/Polygon (+centroid); nodes stay points. `element_to_hit` pure + tested.
 - Store `geom_json` column (GeoJSON, 7->8 col migration); ingest passes geometry through; points keep None.
 - Canvas: per-layer palette (FNV hash, 8 high-contrast colors), line strokes, polygon outlines (no fill yet - concave needs earcut), selected-layer name labels.

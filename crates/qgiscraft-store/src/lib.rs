@@ -175,6 +175,17 @@ pub fn remove_layer(conn: &Connection, id: &str) -> Result<bool, StoreError> {
     Ok(n > 0)
 }
 
+/// Delete every layer and feature (Project > New). No confirmation here;
+/// the UI arms it (double-click). Returns layers removed.
+pub fn clear_all(conn: &Connection) -> Result<usize, StoreError> {
+    conn.execute("DELETE FROM features", [])
+        .map_err(|e| StoreError::Sql(e.to_string()))?;
+    let layers = conn
+        .execute("DELETE FROM layers", [])
+        .map_err(|e| StoreError::Sql(e.to_string()))?;
+    Ok(layers)
+}
+
 /// Flip layer visibility (Layers panel checkbox). True when the id exists.
 pub fn set_visible(conn: &Connection, id: &str, visible: bool) -> Result<bool, StoreError> {
     if id.trim().is_empty() {
@@ -427,6 +438,26 @@ mod tests {
                     .geom_json
                     .as_ref()
                     .is_some_and(|g| g.contains("LineString")));
+            }
+        }
+    }
+
+    #[test]
+    fn clear_all_empties_project() {
+        let conn_opt = Connection::open_in_memory().ok();
+        assert!(conn_opt.is_some());
+        if let Some(conn) = conn_opt {
+            assert!(init_db(&conn).is_ok());
+            let layer = StoredLayer::new("c".to_string(), "C".to_string(), None, None, None);
+            assert!(add_layer(&conn, &layer).is_ok());
+            assert!(clear_all(&conn).is_ok());
+            let layers = list_layers(&conn);
+            if let Ok(layers) = layers {
+                assert!(layers.is_empty());
+            }
+            let feats = list_features(&conn, None);
+            if let Ok(feats) = feats {
+                assert!(feats.is_empty());
             }
         }
     }

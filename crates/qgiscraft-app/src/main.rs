@@ -32,6 +32,9 @@ struct QgisCraftApp {
     center_lng: f64,
     center_lat: f64,
     fit_requested: bool,
+    fit_only: Option<String>,
+    confirm_new: bool,
+    show_about: bool,
     textures: HashMap<(u8, i64, i64), egui::TextureHandle>,
 }
 
@@ -120,6 +123,9 @@ impl QgisCraftApp {
             center_lng: 16.3738,
             center_lat: 48.2082,
             fit_requested: true,
+            fit_only: None,
+            confirm_new: false,
+            show_about: false,
             textures: HashMap::new(),
         };
         // Seed an empty project the way QGIS opens with a default basemap.
@@ -268,14 +274,97 @@ fn parse_geom(feat: &store::StoredFeature) -> Option<Geom> {
 
 /// Frame visible features with padding. No-op when nothing is visible.
 impl QgisCraftApp {
+    /// Frame visible features (or just `fit_only` for Zoom to layer).
     fn fit_to_data(&mut self, rect: &egui::Rect) {
-        if let Some((clng, clat, zoom)) =
-            fit_view(&self.features, &self.layers, rect.width(), rect.height())
-        {
+        let only = self.fit_only.clone();
+        if let Some((clng, clat, zoom)) = fit_view(
+            &self.features,
+            &self.layers,
+            rect.width(),
+            rect.height(),
+            only.as_deref(),
+        ) {
             self.center_lng = clng;
             self.center_lat = clat;
             self.zoom = zoom;
             self.status = "fit".to_string();
+        }
+        self.fit_only = None;
+    }
+
+    /// Project > New: wipe all layers/features, reseed the basemap.
+    /// The menu arms this (double-click); the function itself just runs.
+    fn new_project(&mut self) {
+        let outcome = match store::open_default() {
+            Ok(conn) => match store::clear_all(&conn) {
+                Ok(n) => {
+                    let seed = store::StoredLayer::new(
+                        "osm-basemap".to_string(),
+                        "osm-basemap".to_string(),
+                        Some("xyz:osm".to_string()),
+                        Some("raster".to_string()),
+                        Some("EPSG:3857".to_string()),
+                    );
+                    match store::add_layer(&conn, &seed) {
+                        Ok(()) => format!("new project ({n} layers cleared)"),
+                        Err(e) => format!("seed failed: {e}"),
+                    }
+                }
+                Err(e) => format!("new failed: {e}"),
+            },
+            Err(e) => format!("db open failed: {e}"),
+        };
+        self.selected = None;
+        self.confirm_new = false;
+        self.refresh();
+        self.push_log(outcome);
+    }
+
+    /// Layer > Zoom to layer: fit the selected layer's features.
+    fn zoom_to_selected(&mut self) {
+        if let Some(id) = self.selected.clone() {
+            self.fit_only = Some(id);
+            self.fit_requested = true;
+            self.push_log("zoom to layer".to_string());
+        } else {
+            self.push_log("nothing selected".to_string());
+        }
+    }
+
+    /// Show/hide every layer at once.
+    fn set_all_visible(&mut self, visible: bool) {
+        let ids: Vec<String> = self.layers.iter().map(|l| l.id.clone()).collect();
+        let mut done = 0_usize;
+        for id in ids {
+            let ok = match store::open_default() {
+                Ok(conn) => store::set_visible(&conn, id.as_str(), visible).unwrap_or(false),
+                Err(_) => false,
+            };
+            if ok {
+                done += 1;
+            }
+        }
+        self.refresh();
+        self.push_log(format!(
+            "{} {done} layers",
+            if visible { "showed" } else { "hid" }
+        ));
+    }
+
+    /// Remove the selected layer (dock button, Layer menu, Delete key).
+    fn remove_selected(&mut self) {
+        if let Some(id) = self.selected.clone() {
+            match store::open_default().and_then(|c| store::remove_layer(&c, id.as_str())) {
+                Ok(true) => {
+                    self.push_log(format!("removed {id}"));
+                    self.selected = None;
+                    self.refresh();
+                }
+                Ok(false) => self.push_log(format!("not found: {id}")),
+                Err(e) => self.push_log(format!("remove failed: {e}")),
+            }
+        } else {
+            self.push_log("nothing selected".to_string());
         }
     }
 
@@ -295,18 +384,119 @@ impl Default for QgisCraftApp {
 
 impl eframe::App for QgisCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // Shortcuts: F5 refresh, Delete removes selection, Ctrl+Plus/Minus/0 zoom.
         if ui.input(|input| input.key_pressed(egui::Key::F5)) {
             self.refresh();
             self.push_log("refreshed (F5)".to_string());
         }
+        if ui.input(|input| input.key_pressed(egui::Key::Delete)) {
+            self.remove_selected();
+        }
+        let (ctrl, plus, minus, zero) = ui.input(|input| {
+            (
+                input.modifiers.ctrl,
+                input.key_pressed(egui::Key::Plus) || input.key_pressed(egui::Key::Equals),
+                input.key_pressed(egui::Key::Minus),
+                input.key_pressed(egui::Key::Num0),
+            )
+        });
+        if ctrl && plus {
+            self.zoom = (self.zoom + 1.0).clamp(2.0, 19.0);
+            self.status = "zoom".to_string();
+        }
+        if ctrl && minus {
+            self.zoom = (self.zoom - 1.0).clamp(2.0, 19.0);
+            self.status = "zoom".to_string();
+        }
+        if ctrl && zero {
+            self.fit_only = None;
+            self.fit_requested = true;
+        }
         // Menu bar parity: Project/Edit/View/Layer/Settings/Plugins/Vector/Raster/Database/Web/Processing/Help
         egui::Panel::top("menubar").show(ui, |ui| {
             ui.horizontal(|ui| {
+                ui.menu_button("Project", |ui| {
+                    let label = if self.confirm_new {
+                        "New (click again to confirm wipe)"
+                    } else {
+                        "New (clears project)"
+                    };
+                    if ui.button(label).clicked() {
+                        if self.confirm_new {
+                            self.new_project();
+                        } else {
+                            self.confirm_new = true;
+                            self.push_log("New armed: click again to wipe".to_string());
+                        }
+                    }
+                    if ui.button("Refresh (F5)").clicked() {
+                        self.confirm_new = false;
+                        self.refresh();
+                        self.push_log("refreshed".to_string());
+                    }
+                    if ui.button("Quit").clicked() {
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
+                ui.menu_button("Layer", |ui| {
+                    if ui.button("Add demo layer").clicked() {
+                        let n = self.next_n;
+                        self.next_n += 1;
+                        let layer = store::StoredLayer::new(
+                            format!("demo-{n}"),
+                            format!("demo-{n}"),
+                            Some("osm".to_string()),
+                            Some("point".to_string()),
+                            None,
+                        );
+                        match store::open_default().and_then(|c| store::add_layer(&c, &layer)) {
+                            Ok(()) => {
+                                self.push_log(format!("layer.add demo-{n}"));
+                                self.refresh();
+                            }
+                            Err(e) => self.push_log(format!("layer.add failed: {e}")),
+                        }
+                    }
+                    if ui.button("Remove selected (Del)").clicked() {
+                        self.remove_selected();
+                    }
+                    if ui.button("Zoom to selected").clicked() {
+                        self.zoom_to_selected();
+                    }
+                    if ui.button("Show all").clicked() {
+                        self.set_all_visible(true);
+                    }
+                    if ui.button("Hide all").clicked() {
+                        self.set_all_visible(false);
+                    }
+                });
+                ui.menu_button("View", |ui| {
+                    if ui.button("Zoom in (Ctrl++)").clicked() {
+                        self.zoom = (self.zoom + 1.0).clamp(2.0, 19.0);
+                        self.status = "zoom".to_string();
+                    }
+                    if ui.button("Zoom out (Ctrl+-)").clicked() {
+                        self.zoom = (self.zoom - 1.0).clamp(2.0, 19.0);
+                        self.status = "zoom".to_string();
+                    }
+                    if ui.button("Fit data (Ctrl+0)").clicked() {
+                        self.fit_only = None;
+                        self.fit_requested = true;
+                    }
+                    if ui.button("Reset view (Wien)").clicked() {
+                        self.center_lng = 16.3738;
+                        self.center_lat = 48.2082;
+                        self.zoom = 15.0;
+                        self.status = "reset".to_string();
+                    }
+                });
+                ui.menu_button("Help", |ui| {
+                    if ui.button("About qgiscraft").clicked() {
+                        self.show_about = true;
+                    }
+                });
                 for menu in [
-                    "Project",
                     "Edit",
-                    "View",
-                    "Layer",
                     "Settings",
                     "Plugins",
                     "Vector",
@@ -314,16 +504,27 @@ impl eframe::App for QgisCraftApp {
                     "Database",
                     "Web",
                     "Processing",
-                    "Help",
                 ] {
                     ui.menu_button(menu, |ui| {
                         ui.label(format!(
-                            "{menu} commands land with Phase 0.1 dispatch wiring"
+                            "{menu} commands land with later phases (typed, not stubbed)"
                         ));
                     });
                 }
             });
         });
+        if self.show_about {
+            egui::Window::new("About qgiscraft").show(ui.ctx(), |ui| {
+                ui.label(format!("qgiscraft-mcp {}", env!("CARGO_PKG_VERSION")));
+                ui.label("QGIS-class GIS: 1:1 clone shell, modern Rust core.");
+                ui.label("CLI + MCP (stdio) + native egui, one command bus.");
+                ui.label("Tiles (c) OpenStreetMap contributors (ODbL).");
+                ui.label("Workflow: overpass.query --live --ingest, then Fit data.");
+                if ui.button("Close").clicked() {
+                    self.show_about = false;
+                }
+            });
+        }
 
         // Bottom status + log (QGIS status bar + Log Messages parity)
         egui::Panel::bottom("statusbar").show(ui, |ui| {
@@ -664,18 +865,21 @@ impl eframe::App for QgisCraftApp {
 
 /// Fit visible features into a WxH view. Shared by the canvas and the
 /// headless BMP preview so pixels and preview agree. None when empty.
+/// With `only`, frames just that layer (Zoom to layer).
 fn fit_view(
     features: &[store::StoredFeature],
     layers: &[LayerRow],
     width: f32,
     height: f32,
+    only: Option<&str>,
 ) -> Option<(f64, f64, f32)> {
     let visible = |id: &str| {
-        layers
-            .iter()
-            .find(|l| l.id == id)
-            .map(|l| l.visible)
-            .unwrap_or(false)
+        only.is_none_or(|o| o == id)
+            && layers
+                .iter()
+                .find(|l| l.id == id)
+                .map(|l| l.visible)
+                .unwrap_or(false)
     };
     let mut min_x = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
@@ -728,8 +932,8 @@ fn render_preview(
         egui::Pos2::ZERO,
         egui::Vec2::new(width as f32, height as f32),
     );
-    let (clng, clat, zoom) =
-        fit_view(features, layers, width as f32, height as f32).unwrap_or((16.3738, 48.2082, 15.0));
+    let (clng, clat, zoom) = fit_view(features, layers, width as f32, height as f32, None)
+        .unwrap_or((16.3738, 48.2082, 15.0));
     // BGR pixels, near-black bg.
     let mut px = vec![8_u8; (width as usize) * (height as usize) * 3];
     for y in 0..height {
@@ -994,7 +1198,7 @@ mod tests {
 
     #[test]
     fn fit_view_centers_data() {
-        let fit = fit_view(&test_features(), &test_layers(), 800.0, 600.0);
+        let fit = fit_view(&test_features(), &test_layers(), 800.0, 600.0, None);
         assert!(fit.is_some());
         if let Some((clng, clat, zoom)) = fit {
             assert!((clng - 16.35).abs() < 1e-6);
@@ -1005,7 +1209,12 @@ mod tests {
 
     #[test]
     fn fit_view_empty_is_none() {
-        assert!(fit_view(&[], &test_layers(), 800.0, 600.0).is_none());
+        assert!(fit_view(&[], &test_layers(), 800.0, 600.0, None).is_none());
+    }
+
+    #[test]
+    fn fit_view_only_unknown_layer_is_none() {
+        assert!(fit_view(&test_features(), &test_layers(), 800.0, 600.0, Some("nope")).is_none());
     }
 
     #[test]
