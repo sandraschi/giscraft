@@ -7,8 +7,9 @@
 | [plugins.md](plugins.md) | Plugin strategy: MCP tools are the plugin system |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | L1/L2/L3, command bus, DB-as-project, stdio framing |
 | [ECOSYSTEM.md](ECOSYSTEM.md) | Sources, standards (GTFS et al.), where your maps go, walk-and-photo crossconnect |
+| [WORKFLOWS.md](WORKFLOWS.md) | Worked recipes: question to map, 3 integration paths (bike shops) |
 | [CONFIGURATION.md](CONFIGURATION.md) | Env vars (`QGISCRAFT_*`) |
-| [TOOLS.md](TOOLS.md) | All 9 MCP tools + CLI equivalents |
+| [TOOLS.md](TOOLS.md) | All 10 MCP tools + CLI equivalents |
 | [target-app-parity.md](target-app-parity.md) | QGIS scope, oracle loop |
 | [ui-parity.md](ui-parity.md) | Measured checklist vs running QGIS |
 | [assessment.md](assessment.md) | Self-review + cross-checks |
