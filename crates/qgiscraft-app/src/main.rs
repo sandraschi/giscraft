@@ -118,30 +118,8 @@ struct QgisCraftApp {
     last_rect: Option<egui::Rect>,
 }
 
-/// Pixels per world at zoom 0. Float zoom behaves like a slippy map:
-/// zoom+1 doubles the scale, matching XYZ tile zooms.
-fn world_px(zoom: f32) -> f64 {
-    256.0 * 2_f64.powf(zoom as f64)
-}
-
-fn merc_x(lng: f64, world: f64) -> f64 {
-    world * (lng + 180.0) / 360.0
-}
-
-fn merc_y(lat: f64, world: f64) -> f64 {
-    let r = lat.clamp(-85.05112878, 85.05112878).to_radians();
-    world * (1.0 - (r.tan() + 1.0 / r.cos()).ln() / std::f64::consts::PI) / 2.0
-}
-
-fn merc_lng(x: f64, world: f64) -> f64 {
-    x / world * 360.0 - 180.0
-}
-
-fn merc_lat(y: f64, world: f64) -> f64 {
-    let t = std::f64::consts::PI * (1.0 - 2.0 * y / world);
-    t.sinh().atan().to_degrees()
-}
-
+/// Screen projection, shared with the web preview via `tiles`.
+/// Thin egui wrappers: the math lives in core so both renderers agree.
 fn project(
     lng: f64,
     lat: f64,
@@ -150,12 +128,9 @@ fn project(
     zoom: f32,
     rect: &egui::Rect,
 ) -> egui::Pos2 {
-    let world = world_px(zoom);
-    let center = rect.center();
-    egui::Pos2::new(
-        center.x + (merc_x(lng, world) - merc_x(center_lng, world)) as f32,
-        center.y + (merc_y(lat, world) - merc_y(center_lat, world)) as f32,
-    )
+    let c = rect.center();
+    let (x, y) = tiles::project(lng, lat, center_lng, center_lat, zoom, c.x, c.y);
+    egui::Pos2::new(x, y)
 }
 
 fn unproject(
@@ -165,11 +140,8 @@ fn unproject(
     zoom: f32,
     rect: &egui::Rect,
 ) -> (f64, f64) {
-    let world = world_px(zoom);
-    let center = rect.center();
-    let x = merc_x(center_lng, world) + (pos.x - center.x) as f64;
-    let y = merc_y(center_lat, world) + (pos.y - center.y) as f64;
-    (merc_lng(x, world), merc_lat(y, world))
+    let c = rect.center();
+    tiles::unproject(pos.x, pos.y, center_lng, center_lat, zoom, c.x, c.y)
 }
 
 /// High-contrast dark: near-black surfaces, white text, bright accents.
@@ -322,23 +294,8 @@ fn slug(name: &str) -> String {
 /// Deterministic per-layer color from a fixed high-contrast palette.
 /// Same layer id always maps to the same color (canvas + preview agree).
 fn layer_color(id: &str) -> egui::Color32 {
-    const PALETTE: [[u8; 3]; 8] = [
-        [0x4c, 0xc9, 0xf0],
-        [0xff, 0xb0, 0x26],
-        [0x80, 0xed, 0x99],
-        [0xff, 0x70, 0xa6],
-        [0xff, 0xe0, 0x66],
-        [0xc7, 0x7d, 0xff],
-        [0xff, 0x59, 0x64],
-        [0x64, 0xdf, 0xdf],
-    ];
-    let mut h: u64 = 0xcbf29ce484222325;
-    for b in id.bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x100000001b3);
-    }
-    let c = PALETTE[(h as usize) % PALETTE.len()];
-    egui::Color32::from_rgb(c[0], c[1], c[2])
+    let (r, g, b) = tiles::layer_color(id);
+    egui::Color32::from_rgb(r, g, b)
 }
 
 /// Drawable geometry parsed from a feature's `geom_json`.
@@ -399,10 +356,10 @@ impl QgisCraftApp {
     fn zoom_to(&mut self, anchor: egui::Pos2, target: f32, rect: &egui::Rect) {
         let (glng, glat) = unproject(anchor, self.center_lng, self.center_lat, self.zoom, rect);
         self.zoom = target.clamp(2.0, 19.0);
-        let world = world_px(self.zoom);
         let c = rect.center();
-        self.center_lng = merc_lng(merc_x(glng, world) - (anchor.x - c.x) as f64, world);
-        self.center_lat = merc_lat(merc_y(glat, world) - (anchor.y - c.y) as f64, world);
+        let (nclng, nclat) = tiles::recenter(glng, glat, anchor.x, anchor.y, c.x, c.y, self.zoom);
+        self.center_lng = nclng;
+        self.center_lat = nclat;
         self.status = "zoom".to_string();
     }
 
@@ -1542,13 +1499,19 @@ impl eframe::App for QgisCraftApp {
                 .unwrap_or_else(|| self.db_path.clone());
             ui.horizontal(|ui| {
                 // Web Mercator scale at 96 dpi: meters/px * px/m.
-                let mpp = 156543.03392 * self.center_lat.to_radians().cos()
-                    / 2_f64.powf(self.zoom as f64);
+                let mpp = tiles::meters_per_pixel(self.center_lat, self.zoom);
+                let (bar_m, _bar_px) = tiles::nice_scale_bar(mpp, 140.0);
+                let bar_label = if bar_m >= 1000.0 {
+                    format!("{:.0} km", bar_m / 1000.0)
+                } else {
+                    format!("{:.0} m", bar_m)
+                };
                 ui.label(format!(
-                    "{} | EPSG:3857 | z{:.1} 1:{} | {}",
+                    "{} | EPSG:3857 | z{:.1} 1:{} | bar {} | {}",
                     db_name,
                     self.zoom,
                     (mpp * 3779.527).round() as u64,
+                    bar_label,
                     self.status.clone()
                 ));
                 if let Some(last) = self.log.last() {
@@ -1575,6 +1538,7 @@ impl eframe::App for QgisCraftApp {
                     continue;
                 };
                 ui.horizontal(|ui| {
+                    ui.colored_label(layer_color(&id), "●");
                     if ui.checkbox(&mut visible, name.as_str()).changed() {
                         toggle = Some((id.clone(), visible));
                     }
@@ -1909,6 +1873,54 @@ impl eframe::App for QgisCraftApp {
                 egui::FontId::proportional(10.0),
                 egui::Color32::WHITE,
             );
+            // Scale bar (bottom-left) + north arrow (top-right): QGIS chrome.
+            {
+                let mpp = tiles::meters_per_pixel(self.center_lat, self.zoom);
+                let (bar_m, bar_px) = tiles::nice_scale_bar(mpp, 140.0);
+                if bar_px > 20.0 {
+                    let base = rect.left_bottom() + egui::Vec2::new(14.0, -20.0);
+                    let end = base + egui::Vec2::new(bar_px as f32, 0.0);
+                    painter.line_segment([base, end], egui::Stroke::new(2.0, egui::Color32::WHITE));
+                    for x in [base.x, end.x] {
+                        painter.line_segment(
+                            [
+                                egui::Pos2::new(x, base.y - 4.0),
+                                egui::Pos2::new(x, base.y + 4.0),
+                            ],
+                            egui::Stroke::new(2.0, egui::Color32::WHITE),
+                        );
+                    }
+                    let label = if bar_m >= 1000.0 {
+                        format!("{:.0} km", bar_m / 1000.0)
+                    } else {
+                        format!("{:.0} m", bar_m)
+                    };
+                    painter.text(
+                        end + egui::Vec2::new(6.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        label,
+                        egui::FontId::proportional(11.0),
+                        egui::Color32::WHITE,
+                    );
+                }
+                let nc = rect.right_top() + egui::Vec2::new(-30.0, 34.0);
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        nc + egui::Vec2::new(0.0, -10.0),
+                        nc + egui::Vec2::new(-6.0, 6.0),
+                        nc + egui::Vec2::new(6.0, 6.0),
+                    ],
+                    egui::Color32::WHITE,
+                    egui::Stroke::NONE,
+                ));
+                painter.text(
+                    nc + egui::Vec2::new(0.0, -12.0),
+                    egui::Align2::CENTER_BOTTOM,
+                    "N",
+                    egui::FontId::proportional(12.0),
+                    egui::Color32::WHITE,
+                );
+            }
             // Wheel zoom (QGIS default: plain wheel zooms; Ctrl+wheel and
             // pinch arrive as a multiplicative factor - egui routes
             // Ctrl+scroll into zoom_delta and leaves the scroll channel
@@ -1931,11 +1943,19 @@ impl eframe::App for QgisCraftApp {
                 }
             }
             if resp.dragged() {
-                // Grab-and-drag: content follows the cursor.
+                // Grab-and-drag: content follows the cursor, so the new
+                // center is the geo that sat one drag-vector up-left.
                 let delta = resp.drag_delta();
-                let world = world_px(self.zoom);
-                self.center_lng = merc_lng(merc_x(self.center_lng, world) - delta.x as f64, world);
-                self.center_lat = merc_lat(merc_y(self.center_lat, world) - delta.y as f64, world);
+                let c = rect.center();
+                let (nclng, nclat) = unproject(
+                    egui::Pos2::new(c.x - delta.x, c.y - delta.y),
+                    self.center_lng,
+                    self.center_lat,
+                    self.zoom,
+                    &rect,
+                );
+                self.center_lng = nclng;
+                self.center_lat = nclat;
                 self.status = "pan".to_string();
             }
         });
@@ -1960,38 +1980,28 @@ fn fit_view(
                 .map(|l| l.visible)
                 .unwrap_or(false)
     };
-    let mut min_x = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
+    let mut min_lng = f64::INFINITY;
+    let mut max_lng = f64::NEG_INFINITY;
+    let mut min_lat = f64::INFINITY;
+    let mut max_lat = f64::NEG_INFINITY;
+    let mut any = false;
     for feat in features {
         if !visible(feat.layer_id.as_str()) {
             continue;
         }
-        // World01 (zoom-0 px / 256): zoom-independent, no overflow.
-        let x = (feat.lng + 180.0) / 360.0;
-        let r = feat.lat.clamp(-85.05112878, 85.05112878).to_radians();
-        let y = (1.0 - (r.tan() + 1.0 / r.cos()).ln() / std::f64::consts::PI) / 2.0;
-        min_x = min_x.min(x);
-        max_x = max_x.max(x);
-        min_y = min_y.min(y);
-        max_y = max_y.max(y);
+        if !feat.lng.is_finite() || !feat.lat.is_finite() {
+            continue;
+        }
+        any = true;
+        min_lng = min_lng.min(feat.lng);
+        max_lng = max_lng.max(feat.lng);
+        min_lat = min_lat.min(feat.lat);
+        max_lat = max_lat.max(feat.lat);
     }
-    if min_x.is_infinite() {
+    if !any {
         return None;
     }
-    let cx = (min_x + max_x) / 2.0;
-    let cy = (min_y + max_y) / 2.0;
-    // 20% padding so edge points never sit under the frame.
-    let span_x = ((max_x - min_x) * 1.2).max(1e-9);
-    let span_y = ((max_y - min_y) * 1.2).max(1e-9);
-    let zoom = (width / (span_x * 256.0) as f32).min(height / (span_y * 256.0) as f32);
-    let zoom = zoom.log2().clamp(2.0, 19.0);
-    // Back to lng/lat.
-    let clng = cx * 360.0 - 180.0;
-    let t = std::f64::consts::PI * (1.0 - 2.0 * cy);
-    let clat = t.sinh().atan().to_degrees();
-    Some((clng, clat, zoom))
+    tiles::fit_view(min_lng, min_lat, max_lng, max_lat, width, height)
 }
 
 /// Headless BMP preview (24-bit, hand-rolled): same `project` math as the

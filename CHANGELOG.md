@@ -1,6 +1,11 @@
 # Changelog - qgiscraft-mcp
 
-## 2026-10-24 - Phase 2.3: thin web driver (sidecar + console)
+## 2026-10-24 - Phase 2.4: shared math, canvas chrome, retry, dist
+- Single projection core: `tiles::{project, unproject, fit_view, recenter, meters_per_pixel, nice_scale_bar, layer_color}` with offline tests; app canvas/preview and web server use it (doubles as the fix for the degrees-vs-world01 fit bug class).
+- Canvas chrome: scale bar (nice 1/2/5 m/km), north arrow, per-layer color dots in the Layers dock, live `1:N + bar` readout.
+- Overpass retries (3 attempts, 2s/4s backoff) on 502/503/429/timeouts.
+- `just dist`: naked-PC zip (release exes + README/INSTALL/CHANGELOG + START-HERE.txt).
+- Gates green: 81 tests, clippy -D warnings, fmt, xtask ci.
 - `qgiscraft-web` Axum sidecar on 11254 (Track B seed): GET /api/health|layers|features|geocode|overpass|preview.png, CORS open, serves `web/dist` when built.
 - Map console (`web/`, Vite+React+Leaflet, dev on 11253 proxied): Leaflet map + live layers sidebar, geocode demo/live, one-click Overpass ingest + fit, server-rendered preview link.
 - No new capability: same dispatch + store calls as MCP (duplicated thin glue; unify behind one service layer later — noted in gaps).

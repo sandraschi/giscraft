@@ -343,6 +343,9 @@ fn render_bmp(
         f64::NEG_INFINITY,
     );
     for f in feats {
+        if !f.lng.is_finite() || !f.lat.is_finite() {
+            continue;
+        }
         min_lng = min_lng.min(f.lng);
         max_lng = max_lng.max(f.lng);
         min_lat = min_lat.min(f.lat);
@@ -351,15 +354,17 @@ fn render_bmp(
     if min_lng.is_infinite() {
         return Err("no features to frame".to_string());
     }
-    let clng = (min_lng + max_lng) / 2.0;
-    let clat = (min_lat + max_lat) / 2.0;
-    // Span in world01 units (degrees / 360), as the canvas fit does.
-    let span_x = ((max_lng - min_lng) / 360.0 * 1.2).max(1e-9);
-    let span_y = ((max_lat - min_lat) / 360.0 * 1.2).max(1e-9);
-    let zoom = (width as f32 / (span_x * 256.0) as f32)
-        .min(height as f32 / (span_y * 256.0) as f32)
-        .log2()
-        .clamp(2.0, 19.0);
+    let (clng, clat, zoom) = match tiles::fit_view(
+        min_lng,
+        min_lat,
+        max_lng,
+        max_lat,
+        width as f32,
+        height as f32,
+    ) {
+        Some(v) => v,
+        None => return Err("cannot frame features".to_string()),
+    };
     // Tiles: integer zoom nearest the float view zoom.
     let tile_z = (zoom.floor() as i64).clamp(0, 19) as u8;
     let (wlng, nlat) = unproject(width as f32, height as f32, clng, clat, zoom, 0.0, 0.0);
@@ -504,56 +509,17 @@ fn render_bmp(
     Ok(out)
 }
 
+/// Thin adapters over core math: same signatures as before, one implementation.
 fn unproject(w: f32, h: f32, clng: f64, clat: f64, zoom: f32, x: f32, y: f32) -> (f64, f64) {
-    // Web Mercator inverse (mirrors the canvas math).
-    let world = 256.0 * 2_f64.powf(zoom as f64);
-    let cx = world * (clng + 180.0) / 360.0;
-    let cy = world
-        * (1.0
-            - (clat.to_radians().tan() + 1.0 / clat.to_radians().cos()).ln()
-                / std::f64::consts::PI)
-        / 2.0;
-    let xw = cx + (x - w / 2.0) as f64;
-    let yw = cy + (y - h / 2.0) as f64;
-    let lng = xw / world * 360.0 - 180.0;
-    let t = std::f64::consts::PI * (1.0 - 2.0 * yw / world);
-    (lng, t.sinh().atan().to_degrees())
+    qgiscraft_core::tiles::unproject(x, y, clng, clat, zoom, w / 2.0, h / 2.0)
 }
 
 fn project(lng: f64, lat: f64, clng: f64, clat: f64, zoom: f32, w: f32, h: f32) -> (f32, f32) {
-    let world = 256.0 * 2_f64.powf(zoom as f64);
-    let xw = world * (lng + 180.0) / 360.0;
-    let yw = world
-        * (1.0
-            - (lat.to_radians().tan() + 1.0 / lat.to_radians().cos()).ln() / std::f64::consts::PI)
-        / 2.0;
-    let cxw = world * (clng + 180.0) / 360.0;
-    let cyw = world
-        * (1.0
-            - (clat.to_radians().tan() + 1.0 / clat.to_radians().cos()).ln()
-                / std::f64::consts::PI)
-        / 2.0;
-    (w / 2.0 + (xw - cxw) as f32, h / 2.0 + (yw - cyw) as f32)
+    qgiscraft_core::tiles::project(lng, lat, clng, clat, zoom, w / 2.0, h / 2.0)
 }
 
 fn layer_color(id: &str) -> (u8, u8, u8) {
-    const PALETTE: [[u8; 3]; 8] = [
-        [0x4c, 0xc9, 0xf0],
-        [0xff, 0xb0, 0x26],
-        [0x80, 0xed, 0x99],
-        [0xff, 0x70, 0xa6],
-        [0xff, 0xe0, 0x66],
-        [0xc7, 0x7d, 0xff],
-        [0xff, 0x59, 0x64],
-        [0x64, 0xdf, 0xdf],
-    ];
-    let mut h: u64 = 0xcbf29ce484222325;
-    for b in id.bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x100000001b3);
-    }
-    let c = PALETTE[(h as usize) % PALETTE.len()];
-    (c[0], c[1], c[2])
+    qgiscraft_core::tiles::layer_color(id)
 }
 
 #[tokio::main]

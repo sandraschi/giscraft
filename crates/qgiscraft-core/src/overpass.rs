@@ -166,7 +166,10 @@ pub fn overpass_url() -> String {
 }
 
 /// Execute a builder-produced QL against the Overpass API.
-/// Keyless; 60s timeout; typed errors on status/parse.
+/// Keyless; 60s timeout per attempt; up to 3 attempts with backoff on
+/// retryable failures (502/503/429, connection errors, timeouts).
+/// The classification helpers below are unit-tested; live retries
+/// are exercised against the real API by hand, not in CI.
 pub async fn execute_ql(ql: &str) -> Result<Vec<OverpassHit>, GisError> {
     if ql.trim().is_empty() {
         return Err(GisError::InvalidInput("ql must not be empty".to_string()));
@@ -176,33 +179,71 @@ pub async fn execute_ql(ql: &str) -> Result<Vec<OverpassHit>, GisError> {
         .user_agent("qgiscraft-mcp/0.1 (Overpass; OSM attribution)")
         .build()
         .map_err(|e| GisError::Offline(format!("http client: {e}")))?;
-    let resp = client
-        .post(overpass_url())
-        .body(ql.to_string())
-        .send()
-        .await
-        .map_err(|e| GisError::Offline(format!("overpass unreachable: {e}")))?;
-    if !resp.status().is_success() {
-        return Err(GisError::Offline(format!(
-            "overpass status {}",
-            resp.status().as_u16()
-        )));
-    }
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| GisError::Protocol(format!("overpass json: {e}")))?;
-    let elements = body
-        .get("elements")
-        .and_then(|e| e.as_array())
-        .ok_or_else(|| GisError::Protocol("overpass: no elements array".to_string()))?;
-    let mut hits = Vec::new();
-    for el in elements.iter().take(100) {
-        if let Some(hit) = element_to_hit(el) {
-            hits.push(hit);
+    let mut attempt: u32 = 0;
+    loop {
+        attempt += 1;
+        let resp = match client
+            .post(overpass_url())
+            .body(ql.to_string())
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                if attempt < 3 && is_retryable_error(&e) {
+                    backoff_sleep(attempt);
+                    continue;
+                }
+                return Err(GisError::Offline(format!("overpass unreachable: {e}")));
+            }
+        };
+        let status = resp.status();
+        if !status.is_success() {
+            if attempt < 3 && is_retryable_status(status.as_u16()) {
+                backoff_sleep(attempt);
+                continue;
+            }
+            return Err(GisError::Offline(format!(
+                "overpass status {}",
+                status.as_u16()
+            )));
         }
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| GisError::Protocol(format!("overpass json: {e}")))?;
+        let elements = body
+            .get("elements")
+            .and_then(|e| e.as_array())
+            .ok_or_else(|| GisError::Protocol("overpass: no elements array".to_string()))?;
+        let mut hits = Vec::new();
+        for el in elements.iter().take(100) {
+            if let Some(hit) = element_to_hit(el) {
+                hits.push(hit);
+            }
+        }
+        return Ok(hits);
     }
-    Ok(hits)
+}
+
+/// Retryable HTTP statuses: overloaded (502/503), rate-limited (429),
+/// plus 408 timeouts. 4xx otherwise means our fault: do not retry.
+pub fn is_retryable_status(code: u16) -> bool {
+    matches!(code, 408 | 429 | 502 | 503 | 504)
+}
+
+/// Retryable transport errors: timeouts and connection failures.
+/// Anything else (TLS, bad URL, redirect loops) fails fast.
+pub fn is_retryable_error(e: &reqwest::Error) -> bool {
+    e.is_timeout() || e.is_connect()
+}
+
+/// Blocking backoff between attempts (2s, 4s). Sync sleep is fine:
+/// the app calls this from worker threads, the web sidecar runs it
+/// inside `spawn_blocking`.
+fn backoff_sleep(attempt: u32) {
+    let secs = 2u64.saturating_pow(attempt.min(4));
+    std::thread::sleep(std::time::Duration::from_secs(secs));
 }
 
 #[cfg(test)]
@@ -281,5 +322,15 @@ mod tests {
         assert!(build_tag_query("amenity\";", "x", None).is_err());
         assert!(build_tag_query("", "x", None).is_err());
         assert!(build_tag_query("amenity", "", None).is_err());
+    }
+
+    #[test]
+    fn retryable_statuses() {
+        for code in [408u16, 429, 502, 503, 504] {
+            assert!(is_retryable_status(code), "retry {code}");
+        }
+        for code in [200u16, 400, 401, 403, 404, 422, 500] {
+            assert!(!is_retryable_status(code), "no retry {code}");
+        }
     }
 }

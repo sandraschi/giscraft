@@ -82,6 +82,165 @@ pub fn tile_pixel_to_lnglat(tile: Tile, px: f64, py: f64) -> (f64, f64) {
     (lng, t.sinh().atan().to_degrees())
 }
 
+/// World size in pixels at a float slippy zoom. Shared by the native canvas
+/// and the headless previews so pixels agree everywhere.
+pub fn world_px(zoom: f32) -> f64 {
+    256.0 * 2_f64.powf(zoom as f64)
+}
+
+/// lng/lat -> screen pixels. `(cx, cy)` is the view center in screen px
+/// (usually the canvas middle). Pure Web Mercator, no I/O.
+pub fn project(
+    lng: f64,
+    lat: f64,
+    center_lng: f64,
+    center_lat: f64,
+    zoom: f32,
+    cx: f32,
+    cy: f32,
+) -> (f32, f32) {
+    let world = world_px(zoom);
+    let xw = world * (lng + 180.0) / 360.0;
+    let yw = world
+        * (1.0
+            - (lat.to_radians().tan() + 1.0 / lat.to_radians().cos()).ln() / std::f64::consts::PI)
+        / 2.0;
+    let cxw = world * (center_lng + 180.0) / 360.0;
+    let cyw = world
+        * (1.0
+            - (center_lat.to_radians().tan() + 1.0 / center_lat.to_radians().cos()).ln()
+                / std::f64::consts::PI)
+        / 2.0;
+    (cx + (xw - cxw) as f32, cy + (yw - cyw) as f32)
+}
+
+/// Screen pixels -> lng/lat. Inverse of [`project`].
+pub fn unproject(
+    x: f32,
+    y: f32,
+    center_lng: f64,
+    center_lat: f64,
+    zoom: f32,
+    cx: f32,
+    cy: f32,
+) -> (f64, f64) {
+    let world = world_px(zoom);
+    let cxw = world * (center_lng + 180.0) / 360.0;
+    let cyw = world
+        * (1.0
+            - (center_lat.to_radians().tan() + 1.0 / center_lat.to_radians().cos()).ln()
+                / std::f64::consts::PI)
+        / 2.0;
+    let xw = cxw + (x - cx) as f64;
+    let yw = cyw + (y - cy) as f64;
+    let lng = xw / world * 360.0 - 180.0;
+    let t = std::f64::consts::PI * (1.0 - 2.0 * yw / world);
+    (lng, t.sinh().atan().to_degrees())
+}
+
+/// Fit a lng/lat bbox into a WxH view with 20% padding. Returns
+/// `(center_lng, center_lat, zoom)`. None when the bbox is empty.
+/// World01 math (never degrees), clamped to slippy zoom 2..19.
+pub fn fit_view(
+    min_lng: f64,
+    min_lat: f64,
+    max_lng: f64,
+    max_lat: f64,
+    width: f32,
+    height: f32,
+) -> Option<(f64, f64, f32)> {
+    if !min_lng.is_finite() || !max_lng.is_finite() || !min_lat.is_finite() || !max_lat.is_finite()
+    {
+        return None;
+    }
+    if min_lng > max_lng || min_lat > max_lat {
+        return None;
+    }
+    let to_x = |lng: f64| (lng + 180.0) / 360.0;
+    let to_y = |lat: f64| {
+        let r = lat.clamp(-85.05112878, 85.05112878).to_radians();
+        (1.0 - (r.tan() + 1.0 / r.cos()).ln() / std::f64::consts::PI) / 2.0
+    };
+    let (x0, x1) = (to_x(min_lng), to_x(max_lng));
+    let (mut y0, mut y1) = (to_y(max_lat), to_y(min_lat));
+    if y0 > y1 {
+        std::mem::swap(&mut y0, &mut y1);
+    }
+    let cx = (x0 + x1) / 2.0;
+    let cy = (y0 + y1) / 2.0;
+    let span_x = ((x1 - x0) * 1.2).max(1e-9);
+    let span_y = ((y1 - y0) * 1.2).max(1e-9);
+    let zoom = (width / (span_x * 256.0) as f32)
+        .min(height / (span_y * 256.0) as f32)
+        .log2()
+        .clamp(2.0, 19.0);
+    let from_x = |x: f64| x * 360.0 - 180.0;
+    let t = std::f64::consts::PI * (1.0 - 2.0 * cy);
+    Some((from_x(cx), t.sinh().atan().to_degrees(), zoom))
+}
+
+/// New view center so that geo (glng, glat) stays pinned at screen point
+/// (ax, ay) when the canvas center is (cx, cy). Zoom-to-cursor and pan are
+/// both this: pick the geo to pin, then recenter on it.
+pub fn recenter(glng: f64, glat: f64, ax: f32, ay: f32, cx: f32, cy: f32, zoom: f32) -> (f64, f64) {
+    let world = world_px(zoom);
+    let r = glat.clamp(-85.05112878, 85.05112878).to_radians();
+    let xw = world * (glng + 180.0) / 360.0 - (ax - cx) as f64;
+    let yw = world * (1.0 - (r.tan() + 1.0 / r.cos()).ln() / std::f64::consts::PI) / 2.0
+        - (ay - cy) as f64;
+    let lng = xw / world * 360.0 - 180.0;
+    let t = std::f64::consts::PI * (1.0 - 2.0 * yw / world);
+    (lng, t.sinh().atan().to_degrees())
+}
+
+/// Meters per pixel at a latitude and float zoom (WGS84 equatorial
+/// circumference / 2^zoom, cos-corrected). Basis for scale bars/readouts.
+pub fn meters_per_pixel(lat: f64, zoom: f32) -> f64 {
+    156543.03392 * lat.to_radians().cos() / 2_f64.powf(zoom as f64)
+}
+
+/// Nice round bar length (1/2/5 x 10^n meters) that fits `max_px` pixels.
+pub fn nice_scale_bar(mpp: f64, max_px: f32) -> (f64, f64) {
+    if mpp <= 0.0 || max_px <= 0.0 || !mpp.is_finite() || !max_px.is_finite() {
+        return (0.0, 0.0);
+    }
+    let raw = mpp * max_px as f64;
+    if !raw.is_finite() || raw <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let pow10 = 10_f64.powf(raw.log10().floor());
+    for m in [5.0, 2.0, 1.0] {
+        let candidate = m * pow10;
+        if candidate <= raw {
+            return (candidate, candidate / mpp);
+        }
+    }
+    (pow10 / 10.0, pow10 / 10.0 / mpp)
+}
+
+/// Deterministic per-layer color from a fixed high-contrast palette.
+/// Same id always maps to the same color across native canvas, headless
+/// BMP, and web preview (app wraps this into `egui::Color32`).
+pub fn layer_color(id: &str) -> (u8, u8, u8) {
+    const PALETTE: [[u8; 3]; 8] = [
+        [0x4c, 0xc9, 0xf0],
+        [0xff, 0xb0, 0x26],
+        [0x80, 0xed, 0x99],
+        [0xff, 0x70, 0xa6],
+        [0xff, 0xe0, 0x66],
+        [0xc7, 0x7d, 0xff],
+        [0xff, 0x59, 0x64],
+        [0x64, 0xdf, 0xdf],
+    ];
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in id.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    let c = PALETTE[(h as usize) % PALETTE.len()];
+    (c[0], c[1], c[2])
+}
+
 /// XYZ tile URL template (`{z}/{x}/{y}` placeholders).
 /// Override with `QGISCRAFT_TILES_URL` (e.g. a local mirror or style).
 /// No network here: pure string handling, so tests stay offline.
@@ -251,5 +410,59 @@ mod tests {
         let (clng, clat) = tile_pixel_to_lnglat(tile, 128.0, 128.0);
         assert!(clng > min_lng && clng < max_lng);
         assert!(clat > min_lat && clat < max_lat);
+    }
+
+    #[test]
+    fn project_centers_and_doubles_with_zoom() {
+        let (x0, y0) = project(16.3738, 48.2082, 16.3738, 48.2082, 15.0, 400.0, 300.0);
+        assert!((x0 - 400.0).abs() < 0.01 && (y0 - 300.0).abs() < 0.01);
+        let (xa, _) = project(16.3838, 48.2082, 16.3738, 48.2082, 15.0, 400.0, 300.0);
+        let (xb, _) = project(16.3838, 48.2082, 16.3738, 48.2082, 16.0, 400.0, 300.0);
+        let ratio = (xb - 400.0) / (xa - 400.0);
+        assert!((ratio - 2.0).abs() < 0.01, "zoom+1 must double: {ratio}");
+    }
+
+    #[test]
+    fn unproject_inverts_project() {
+        let (lng, lat) = unproject(450.0, 280.0, 16.3738, 48.2082, 14.0, 400.0, 300.0);
+        let (x, y) = project(lng, lat, 16.3738, 48.2082, 14.0, 400.0, 300.0);
+        assert!((x - 450.0).abs() < 0.01 && (y - 280.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn fit_view_frames_vienna_bbox() {
+        let fit = fit_view(16.36, 48.20, 16.39, 48.22, 800.0, 600.0);
+        assert!(fit.is_some());
+        if let Some((clng, clat, zoom)) = fit {
+            assert!((clng - 16.375).abs() < 1e-6, "clng {clng}");
+            assert!((clat - 48.21).abs() < 1e-3, "clat {clat}");
+            assert!((12.0..=17.0).contains(&zoom), "zoom {zoom}");
+        }
+        assert!(fit_view(16.4, 48.2, 16.3, 48.3, 800.0, 600.0).is_none());
+        assert!(fit_view(f64::NAN, 0.0, 1.0, 1.0, 800.0, 600.0).is_none());
+    }
+
+    #[test]
+    fn recenter_keeps_anchor_fixed() {
+        // Pin Stephansplatz at an off-center pixel, then verify it projects
+        // back onto that same pixel with the new center.
+        let (glng, glat) = (16.3738, 48.2082);
+        let (ax, ay, cx, cy, zoom) = (500.0_f32, 200.0, 400.0, 300.0, 15.0);
+        let (nclng, nclat) = recenter(glng, glat, ax, ay, cx, cy, zoom);
+        let (px, py) = project(glng, glat, nclng, nclat, zoom, cx, cy);
+        assert!((px - ax).abs() < 0.05 && (py - ay).abs() < 0.05);
+    }
+
+    #[test]
+    fn vienna_scale_is_sane() {
+        // ~3.2 m/px at Stephansplatz, z15.
+        let mpp = meters_per_pixel(48.2082, 15.0);
+        assert!((3.0..3.5).contains(&mpp), "mpp {mpp}");
+        // Nice bars snap to 1/2/5 and fit the pixel budget.
+        let (m, px) = nice_scale_bar(mpp, 120.0);
+        assert!([100.0, 200.0, 500.0].contains(&m), "bar {m}m");
+        assert!(px <= 120.0 && px > 0.0);
+        assert_eq!(nice_scale_bar(0.0, 100.0), (0.0, 0.0));
+        assert_eq!(nice_scale_bar(f64::NAN, 100.0), (0.0, 0.0));
     }
 }

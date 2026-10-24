@@ -1,4 +1,4 @@
-# docs/gaps.md - ranked work list (v2.2: toolbox wired + buffer)
+# docs/gaps.md - ranked work list (v2.3: shared math, chrome, retry, dist)
 
 DONE:
 - Core `Command` bus (10 cmds) + validation hardening.
@@ -16,6 +16,10 @@ DONE:
 - Standard readme stack + plugin strategy (MCP tools are the plugin system) + data ecosystem doc (sources, GTFS et al., where your maps go, walk-and-photo crossconnect).
 - Track B seed: Axum sidecar (11254) + React/Leaflet console (11253, proxied) — same command bus over REST, no new capabilities.
 - Oracle rig: QGIS 3.44.15 LTR side-by-side; `plan/qgis/` observations (gitignored); `docs/ui-parity.md`.
+- Single projection core (`tiles::project/unproject/fit_view/recenter/meters_per_pixel/nice_scale_bar/layer_color`); app + headless BMP share it, web uses it for fit/tiles.
+- Overpass retries (3 attempts, backoff) on 502/503/429/timeouts; public-API flakiness no longer kills a demo.
+- Canvas chrome: scale bar (nice 1/2/5 m/km), north arrow, per-layer color dots in dock, live `1:N + bar` readout.
+- `just dist`: naked-PC zip (release exes + README/INSTALL/CHANGELOG + START-HERE).
 
 NEXT (in sequence):
 1. First oracle pass: canvas nav bindings (wheel/Ctrl+wheel/drag/box), menu inventory, per plan/qgis/02-ui-ux.md.
@@ -28,4 +32,4 @@ NEXT (in sequence):
 8. Print Layout export PNG.
 9. OSM Austria PBF bulk loader.
 10. Async tile worker (replace 2-fetch/frame sync cap).
-11. Unify app + web render paths (one shared `render` module; the BMP math is currently duplicated).
+11. Unify app + web BMP blit loops (math is shared; only the pixel-pushing differs - low priority).
