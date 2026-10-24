@@ -1,5 +1,12 @@
 # Changelog - qgiscraft-mcp
 
+## 2026-10-24 - Phase 0.2: SQLite persistence + Overpass builder
+- `--db` plumbing: CLI + MCP layer add/list/remove persist to SQLite (`$QGISCRRAFT_DB` or `./qgiscraft.db`); roundtrip proven via CLI smoke.
+- Store 3->5 col migration (geom_type, crs) with duplicate-column-tolerant init; name validation; `resolve_db_path`/`open_at`.
+- Overpass: fenced tag builder (quotes/semicolons/control rejected) + dry-run QL + live execute capped at 100 hits.
+- Tests hermetic via unique temp DBs (no env mutation): 24 tests green.
+- Gates green: clippy -D warnings, fmt, xtask ci/layers/parity, stdio probe.
+
 ## 2026-10-24 - Phase 0.1: real project model + Photon live path
 - App owns a real `Project` (add/remove/visibility/select, typed log, 50-line cap).
 - Store gains `remove_layer` + `default_db_path`/`open_default` (`QGISCRRAFT_DB` override); CLI/MCP->DB wiring deferred to keep tests hermetic.

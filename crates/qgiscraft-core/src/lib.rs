@@ -13,6 +13,7 @@
 pub mod error;
 pub mod geo;
 pub mod geocode;
+pub mod overpass;
 pub mod project;
 
 use error::GisError;
@@ -50,7 +51,13 @@ pub enum Command {
         live: bool,
     },
     OverpassQuery {
-        query: String,
+        key: String,
+        value: String,
+        south: Option<f64>,
+        west: Option<f64>,
+        north: Option<f64>,
+        east: Option<f64>,
+        live: bool,
     },
     ExportPng {
         width: Option<u32>,
@@ -138,11 +145,38 @@ pub async fn dispatch(cmd: Command) -> Value {
                 }
             }
         }
-        Command::OverpassQuery { query } => {
-            if query.trim().is_empty() {
-                return json!({"error": "invalid input: query must not be empty", "op": "overpass.query"});
+        Command::OverpassQuery {
+            key,
+            value,
+            south,
+            west,
+            north,
+            east,
+            live,
+        } => {
+            let bbox = match (south, west, north, east) {
+                (Some(s), Some(w), Some(n), Some(e)) => match geo::Bbox::new(w, s, e, n) {
+                    Ok(b) => Some(b),
+                    Err(e) => return json!({"error": e.to_string(), "op": "overpass.query"}),
+                },
+                (None, None, None, None) => None,
+                _ => {
+                    return json!({"error": "invalid input: bbox needs all of south,west,north,east or none", "op": "overpass.query"});
+                }
+            };
+            let ql = match overpass::build_tag_query(&key, &value, bbox) {
+                Ok(ql) => ql,
+                Err(e) => return json!({"error": e.to_string(), "op": "overpass.query"}),
+            };
+            if !live {
+                return json!({"key": key, "value": value, "ql": ql, "live": false, "note": "dry-run: re-run with live=true to execute against overpass-api.de"});
             }
-            json!({"error": "unsupported: overpass.query live path lands Phase 0.1 (demo only)", "op": "overpass.query"})
+            match overpass::execute_ql(&ql).await {
+                Ok(hits) => {
+                    json!({"key": key, "value": value, "ql": ql, "count": hits.len(), "hits": hits, "live": true})
+                }
+                Err(e) => json!({"error": e.to_string(), "op": "overpass.query"}),
+            }
         }
         Command::ExportPng {
             width: _,

@@ -9,6 +9,7 @@
 
 use clap::{Parser, Subcommand};
 use qgiscraft_core::{dispatch, Command};
+use qgiscraft_store as store;
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::sync::OnceLock;
@@ -36,7 +37,7 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Add a layer (id/name/source/geom-type)
+    /// Add a layer (id/name/source/geom-type; persists to SQLite)
     LayerAdd {
         #[arg(long)]
         id: String,
@@ -49,17 +50,23 @@ enum Commands {
         #[arg(long)]
         crs: Option<String>,
         #[arg(long)]
-        json: bool,
-    },
-    /// List layers (Phase 0: in-memory note)
-    LayerList {
+        db: Option<String>,
         #[arg(long)]
         json: bool,
     },
-    /// Remove a layer by id
+    /// List layers (SQLite project DB)
+    LayerList {
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove a layer by id (SQLite project DB)
     LayerRemove {
         #[arg(long)]
         id: String,
+        #[arg(long)]
+        db: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -69,6 +76,25 @@ enum Commands {
         query: String,
         #[arg(long)]
         limit: Option<u8>,
+        #[arg(long)]
+        live: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Overpass tag search (dry-run builds QL; --live executes, keyless)
+    OverpassQuery {
+        #[arg(long, default_value = "amenity")]
+        key: String,
+        #[arg(long, default_value = "pharmacy")]
+        value: String,
+        #[arg(long)]
+        south: Option<f64>,
+        #[arg(long)]
+        west: Option<f64>,
+        #[arg(long)]
+        north: Option<f64>,
+        #[arg(long)]
+        east: Option<f64>,
         #[arg(long)]
         live: bool,
         #[arg(long)]
@@ -94,6 +120,57 @@ fn run(cmd: Command) -> Value {
     rt().block_on(dispatch(cmd))
 }
 
+/// L2 persistence owner: core dispatch validates, SQLite stores.
+/// `db=None` resolves to `$QGISCRRAFT_DB` or `./qgiscraft.db`.
+fn layer_add(
+    db: Option<&str>,
+    id: &str,
+    name: &str,
+    source: Option<String>,
+    geom_type: Option<String>,
+    crs: Option<String>,
+) -> Value {
+    if id.trim().is_empty() || name.trim().is_empty() {
+        return json!({"error": "invalid input: id and name must not be empty", "op": "layer.add"});
+    }
+    let conn = match store::open_at(db) {
+        Ok(conn) => conn,
+        Err(e) => return json!({"error": e.to_string(), "op": "layer.add"}),
+    };
+    let row = store::StoredLayer::new(id.to_string(), name.to_string(), source, geom_type, crs);
+    match store::add_layer(&conn, &row) {
+        Ok(()) => {
+            json!({"id": row.id, "name": row.name, "source": row.source, "geom_type": row.geom_type, "crs": row.crs, "added": true})
+        }
+        Err(e) => json!({"error": e.to_string(), "op": "layer.add"}),
+    }
+}
+
+fn layer_list(db: Option<&str>) -> Value {
+    let conn = match store::open_at(db) {
+        Ok(conn) => conn,
+        Err(e) => return json!({"error": e.to_string(), "op": "layer.list"}),
+    };
+    match store::list_layers(&conn) {
+        Ok(layers) => json!({"count": layers.len(), "layers": layers}),
+        Err(e) => json!({"error": e.to_string(), "op": "layer.list"}),
+    }
+}
+
+fn layer_remove(db: Option<&str>, id: &str) -> Value {
+    if id.trim().is_empty() {
+        return json!({"error": "invalid input: id must not be empty", "op": "layer.remove"});
+    }
+    let conn = match store::open_at(db) {
+        Ok(conn) => conn,
+        Err(e) => return json!({"error": e.to_string(), "op": "layer.remove"}),
+    };
+    match store::remove_layer(&conn, id) {
+        Ok(removed) => json!({"id": id, "removed": removed}),
+        Err(e) => json!({"error": e.to_string(), "op": "layer.remove"}),
+    }
+}
+
 fn print_json(value: &Value) {
     if let Ok(text) = serde_json::to_string_pretty(value) {
         println!("{text}");
@@ -117,11 +194,11 @@ fn tools_list() -> Value {
         "tools": [
             {"name": "status", "description": "Show app status (mode, commands, contract)", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "project.status", "description": "Project CRS and layer count", "inputSchema": {"type": "object", "properties": {}}},
-            {"name": "layer.add", "description": "Add a layer: id, name required; source, geom_type, crs optional", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "source": {"type": "string"}, "geom_type": {"type": "string"}, "crs": {"type": "string"}}, "required": ["id", "name"]}},
-            {"name": "layer.list", "description": "List layers in draw order", "inputSchema": {"type": "object", "properties": {}}},
-            {"name": "layer.remove", "description": "Remove a layer by id", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}},
+            {"name": "layer.add", "description": "Add a layer: id, name required; source, geom_type, crs, db optional", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "source": {"type": "string"}, "geom_type": {"type": "string"}, "crs": {"type": "string"}, "db": {"type": "string"}}, "required": ["id", "name"]}},
+            {"name": "layer.list", "description": "List layers in draw order (SQLite project DB; db optional)", "inputSchema": {"type": "object", "properties": {"db": {"type": "string"}}}},
+            {"name": "layer.remove", "description": "Remove a layer by id (db optional)", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "db": {"type": "string"}}, "required": ["id"]}},
             {"name": "geocode.search", "description": "Search places: query required, limit 1..50, live=false demo else Photon", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "live": {"type": "boolean"}}, "required": ["query"]}},
-            {"name": "overpass.query", "description": "Overpass QL query (Phase 0.1 live; now typed unsupported)", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
+            {"name": "overpass.query", "description": "Overpass tag search: key/value required, bbox south/west/north/east optional, live=false dry-runs QL else executes", "inputSchema": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}, "south": {"type": "number"}, "west": {"type": "number"}, "north": {"type": "number"}, "east": {"type": "number"}, "live": {"type": "boolean"}}, "required": ["key", "value"]}},
             {"name": "export.png", "description": "Export map PNG (Phase 1 render path)", "inputSchema": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}}},
         ]
     })
@@ -138,20 +215,27 @@ fn call_tool(name: &str, args: &Value) -> Value {
         "status" => run(Command::Status),
         "project.status" => run(Command::ProjectStatus),
         "layer.add" => {
-            let id = str_arg(args, "id").unwrap_or_default();
-            let lname = str_arg(args, "name").unwrap_or_default();
-            run(Command::LayerAdd {
-                id,
-                name: lname,
-                source: str_arg(args, "source").unwrap_or_else(|| "osm".to_string()),
-                geom_type: str_arg(args, "geom_type").unwrap_or_else(|| "point".to_string()),
-                crs: str_arg(args, "crs"),
-            })
+            let db = str_arg(args, "db");
+            layer_add(
+                db.as_deref(),
+                str_arg(args, "id").unwrap_or_default().as_str(),
+                str_arg(args, "name").unwrap_or_default().as_str(),
+                str_arg(args, "source"),
+                str_arg(args, "geom_type"),
+                str_arg(args, "crs"),
+            )
         }
-        "layer.list" => run(Command::LayerList),
-        "layer.remove" => run(Command::LayerRemove {
-            id: str_arg(args, "id").unwrap_or_default(),
-        }),
+        "layer.list" => {
+            let db = str_arg(args, "db");
+            layer_list(db.as_deref())
+        }
+        "layer.remove" => {
+            let db = str_arg(args, "db");
+            layer_remove(
+                db.as_deref(),
+                str_arg(args, "id").unwrap_or_default().as_str(),
+            )
+        }
         "geocode.search" => {
             let limit = args.get("limit").and_then(|v| v.as_u64()).and_then(|n| {
                 if (1..=50).contains(&n) {
@@ -171,9 +255,18 @@ fn call_tool(name: &str, args: &Value) -> Value {
                 })
             }
         }
-        "overpass.query" => run(Command::OverpassQuery {
-            query: str_arg(args, "query").unwrap_or_default(),
-        }),
+        "overpass.query" => {
+            let f = |k: &str| args.get(k).and_then(|v| v.as_f64());
+            run(Command::OverpassQuery {
+                key: str_arg(args, "key").unwrap_or_default(),
+                value: str_arg(args, "value").unwrap_or_default(),
+                south: f("south"),
+                west: f("west"),
+                north: f("north"),
+                east: f("east"),
+                live: args.get("live").and_then(|v| v.as_bool()).unwrap_or(false),
+            })
+        }
         "export.png" => run(Command::ExportPng {
             width: args
                 .get("width")
@@ -276,21 +369,25 @@ fn main() {
             source,
             geom_type,
             crs,
+            db,
             json,
         } => show(
-            run(Command::LayerAdd {
-                id,
-                name,
-                source,
-                geom_type,
+            layer_add(
+                db.as_deref(),
+                &id,
+                &name,
+                Some(source),
+                Some(geom_type),
                 crs,
-            }),
+            ),
             json,
             "layer.add",
         ),
-        Commands::LayerList { json } => show(run(Command::LayerList), json, "layers"),
-        Commands::LayerRemove { id, json } => {
-            show(run(Command::LayerRemove { id }), json, "layer.remove");
+        Commands::LayerList { db, json } => {
+            show(layer_list(db.as_deref()), json, "layers");
+        }
+        Commands::LayerRemove { id, db, json } => {
+            show(layer_remove(db.as_deref(), &id), json, "layer.remove");
         }
         Commands::GeocodeSearch {
             query,
@@ -301,6 +398,28 @@ fn main() {
             run(Command::GeocodeSearch { query, limit, live }),
             json,
             "geocode.search",
+        ),
+        Commands::OverpassQuery {
+            key,
+            value,
+            south,
+            west,
+            north,
+            east,
+            live,
+            json,
+        } => show(
+            run(Command::OverpassQuery {
+                key,
+                value,
+                south,
+                west,
+                north,
+                east,
+                live,
+            }),
+            json,
+            "overpass.query",
         ),
         Commands::Mcp => run_mcp_stdio(),
     }
@@ -337,13 +456,68 @@ mod tests {
     #[test]
     fn layer_add_empty_id_is_typed_error() {
         let result = call_tool("layer.add", &json!({"id": "", "name": "x"}));
-        let text = result
+        assert!(content_text(&result).contains("invalid input"));
+    }
+
+    fn content_text(result: &Value) -> String {
+        result
             .get("content")
             .and_then(|c| c.as_array())
             .and_then(|a| a.first())
             .and_then(|i| i.get("text"))
             .and_then(|t| t.as_str())
-            .unwrap_or("");
+            .unwrap_or("")
+            .to_string()
+    }
+
+    fn temp_db(tag: &str) -> String {
+        let mut p = std::env::temp_dir();
+        p.push(format!("qgiscraft-test-{}-{tag}.db", std::process::id()));
+        let s = p.to_string_lossy().to_string();
+        let _ = std::fs::remove_file(&p);
+        s
+    }
+
+    #[test]
+    fn layer_persist_roundtrip_in_temp_db() {
+        let db = temp_db("persist");
+        let added = layer_add(
+            Some(db.as_str()),
+            "t1",
+            "Test One",
+            Some("osm".to_string()),
+            Some("point".to_string()),
+            None,
+        );
+        assert!(added
+            .get("added")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false));
+        let listed = layer_list(Some(db.as_str()));
+        assert_eq!(listed.get("count").and_then(|v| v.as_u64()), Some(1));
+        let removed = layer_remove(Some(db.as_str()), "t1");
+        assert_eq!(removed.get("removed").and_then(|v| v.as_bool()), Some(true));
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn overpass_dry_run_returns_ql_offline() {
+        let result = call_tool(
+            "overpass.query",
+            &json!({"key": "amenity", "value": "pharmacy"}),
+        );
+        let text = content_text(&result);
+        assert!(text.contains("amenity"));
+        assert!(text.contains("\"live\":false"));
+    }
+
+    #[test]
+    fn overpass_hostile_key_rejected_without_network() {
+        let result = call_tool(
+            "overpass.query",
+            &json!({"key": "amenity\";", "value": "x"}),
+        );
+        let text = content_text(&result);
         assert!(text.contains("invalid input"));
     }
 

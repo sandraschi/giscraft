@@ -3071,6 +3071,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "qgiscraft-core",
+ "qgiscraft-store",
  "serde",
  "serde_json",
  "tokio",
