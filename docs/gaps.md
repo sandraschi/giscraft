@@ -28,3 +28,4 @@ NEXT (in sequence):
 8. Print Layout export PNG.
 9. OSM Austria PBF bulk loader.
 10. Async tile worker (replace 2-fetch/frame sync cap).
+11. Unify app + web render paths (one shared `render` module; the BMP math is currently duplicated).

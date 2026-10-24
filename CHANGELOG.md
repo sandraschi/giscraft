@@ -4,7 +4,8 @@
 - `qgiscraft-web` Axum sidecar on 11254 (Track B seed): GET /api/health|layers|features|geocode|overpass|preview.png, CORS open, serves `web/dist` when built.
 - Map console (`web/`, Vite+React+Leaflet, dev on 11253 proxied): Leaflet map + live layers sidebar, geocode demo/live, one-click Overpass ingest + fit, server-rendered preview link.
 - No new capability: same dispatch + store calls as MCP (duplicated thin glue; unify behind one service layer later — noted in gaps).
-- Gates green: 73 tests + `cargo build` web crate + `vite build` clean.
+- Gates green: 75 tests + `cargo build` web crate + `vite build` clean (console serves at `/`, API verified live: layers, geocode, 585KB tiled preview.png).
+- Fixed two real bugs found by looking: async-context panic (blocking reqwest inside handler now runs on `spawn_blocking`) and preview fit in degrees instead of world01 (continent view -> street view).
 
 ## 2026-10-24 - Phase 2.2: toolbox wired + buffer
 - Processing Toolbox dock is real: search field + 3 runnable algorithms (OSM download, Geocode, Buffer points); dead Buffer/Clip/Dissolve buttons removed.

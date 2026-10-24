@@ -271,12 +271,19 @@ async fn preview_png(Query(q): Query<PreviewQuery>) -> axum::response::Response 
     };
     // Fit visible features from this DB (same math as the canvas).
     let feats = qgiscraft_store::list_features(&conn, None).unwrap_or_default();
-    let bmp = render_bmp(&feats, w, h, with_tiles, &template);
-    let bytes = match bmp {
-        Ok(b) => b,
-        Err(e) => return err(e),
-    };
+    // render_bmp does blocking tile I/O: run it on the blocking pool, not
+    // the async worker (reqwest::blocking builds its own runtime and panics
+    // if created - or dropped - inside an async context).
+    let bytes =
+        match tokio::task::spawn_blocking(move || render_bmp(&feats, w, h, with_tiles, &template))
+            .await
+        {
+            Ok(Ok(bytes)) => bytes,
+            Ok(Err(e)) => return err(e),
+            Err(e) => return err(format!("render task failed: {e}")),
+        };
     // BMP (BGR, bottom-up) -> PNG via the image crate.
+    // `bytes` is the finished BMP from the blocking render above.
     let stride = (w as usize * 3).div_ceil(4) * 4;
     let mut rgba = vec![0u8; w as usize * h as usize * 4];
     if bytes.len() < 54 + stride * h as usize {
@@ -346,8 +353,9 @@ fn render_bmp(
     }
     let clng = (min_lng + max_lng) / 2.0;
     let clat = (min_lat + max_lat) / 2.0;
-    let span_x = ((max_lng - min_lng) * 1.2).max(1e-9);
-    let span_y = ((max_lat - min_lat) * 1.2).max(1e-9);
+    // Span in world01 units (degrees / 360), as the canvas fit does.
+    let span_x = ((max_lng - min_lng) / 360.0 * 1.2).max(1e-9);
+    let span_y = ((max_lat - min_lat) / 360.0 * 1.2).max(1e-9);
     let zoom = (width as f32 / (span_x * 256.0) as f32)
         .min(height as f32 / (span_y * 256.0) as f32)
         .log2()
