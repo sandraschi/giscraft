@@ -1,5 +1,11 @@
 # Changelog - qgiscraft-mcp
 
+## 2026-10-24 - Phase 0.5: contrast + Ctrl-wheel zoom
+- High-contrast dark visuals (near-black surfaces, bright selection/text).
+- Ctrl+wheel zooms the canvas (0.25x-8x); status bar shows live `1:denom (pct%)` + project file name.
+- Canvas has a zoom-scaled crosshair anchor + frame so zoom is visible pre-render.
+- Gates green: 28 tests, clippy -D warnings, fmt, smoke.
+
 ## 2026-10-24 - Phase 0.4: GUI proven + live end-to-end
 - `qgiscraft-app --smoke`: headless open/seed/list proof (no window, CI-safe); `just run-app-smoke`.
 - Live verified by hand: Photon `Stephansplatz` -> 3 real hits; Overpass `amenity=pharmacy` Innere Stadt -> 29 ingested, read back via `features.list` and `layer.list` (features: 29).
