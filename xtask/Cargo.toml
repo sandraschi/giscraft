@@ -1,0 +1,15 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+description = "Workspace gates: ci/layers/parity (designcraft pattern, minimal)"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+
+[lints]
+workspace = true

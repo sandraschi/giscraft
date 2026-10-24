@@ -1,0 +1,14 @@
+[package]
+name = "qgiscraft-store"
+version = "0.1.0"
+edition = "2021"
+description = "SQLite project store (no UI/MCP deps)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+rusqlite = { workspace = true }
+
+[lints]
+workspace = true

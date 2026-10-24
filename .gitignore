@@ -1,0 +1,5 @@
+/target
+*.bak
+*.cache
+*.exe
+.DS_Store
