@@ -1,0 +1,7 @@
+{
+  "name": "qgiscraft-mcp",
+  "description": "QGIS-class GIS in pure Rust: clean-room clone shell, CLI + MCP first, live Overpass/Photon ingest, tiled Web Mercator canvas",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/sandraschi/qgiscraft-mcp"
+}

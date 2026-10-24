@@ -1,20 +1,85 @@
 # qgiscraft-mcp
 
-QGIS-class GIS, storytold craft pattern: 1:1 clone for muscle memory,
-modern Rust backend, CLI + MCP first.
+QGIS-class GIS in pure Rust: a clean-room 1:1 clone shell for QGIS muscle
+memory, with a modern core, CLI + MCP first, and no 2005 backend cruft.
 
-- Track A (native): `crates/qgiscraft-app` eframe/egui clone - Project/Layer/Vector/Raster/Processing/Layout menu parity, Browser + Layers docks, map canvas, status bar. Zero ports, in-process `qgiscraft_core::dispatch`.
-- Track B (web parallel): ports 11253/11254 reserved for sandraschi webapp for users who never learned QGIS. Same `Command` bus over MCP.
-- L1 `qgiscraft-core`: geo types, project model, `Command::dispatch`. L2 `qgiscraft-mcp`: CLI-first + MCP stdio 2024-11-05. Store: SQLite projects.
+## What this wraps
 
-## Quickstart
+**[QGIS](https://qgis.org)** (LTR 3.44), the free and open-source desktop GIS
+— the reference our menus, docks, canvas behavior and shortcuts are cloned
+from, black-box. No QGIS code ships here and none is needed to run. Full
+picture: [docs/WRAPPEE.md](docs/WRAPPEE.md). Our plugin answer vs
+[plugins.qgis.org](https://plugins.qgis.org/): [docs/plugins.md](docs/plugins.md).
+
+## Preview
+
+![First light: 29 live Vienna pharmacies over OSM tiles](docs/map-preview.png)
+*Rendered headless by the app itself (`--smoke` BMP preview). Streets: (c) OpenStreetMap contributors.*
+
+## What You Can Do
+
+**How it runs**: native egui app + CLI + MCP server over stdio, one shared
+command bus. SQLite project file *is* the project (our `.qgz`). Zero ports
+for the native track; no accounts, no keys (Photon/Overpass/tiles are keyless).
+
+- Geocode places (Photon live, Vienna demo offline), search the map
+- Query OpenStreetMap via fenced Overpass builder (dry-run QL or live execute)
+- Ingest hits as layers (points, lines, polygons) into the project DB
+- Render vectors over cached XYZ tiles: per-layer colors, concave fills, labels
+- Pan/zoom-to-cursor/Fit/F5, layers dock with counts, menus + shortcuts
+- Drive all of it from Claude via 9 MCP tools (same bus as the GUI)
+
+**Track B (reserved, not built):** ports 11253/11254 are claimed for a future
+sandraschi webapp for users who never learned QGIS. The native app needs none.
+
+## Install
+
+Pre-release: building from source is currently the only path (no installer,
+no `.mcpb` yet). It takes one command chain:
 
 ```powershell
-$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
-cargo test --workspace
-cargo run -p qgiscraft-mcp -- status --json
-cargo run -p qgiscraft-mcp -- mcp
+winget install Rustlang.Rustup
+# + "Desktop development with C++" (MSVC linker, required on Windows)
 cargo run -p qgiscraft-app --
 ```
 
-See `docs/target-app-parity.md` for QGIS parity scope, `AGENTS.md` for gates.
+Everything else — Claude Desktop wiring, env vars, verification prompt —
+is in [INSTALL.md](INSTALL.md). Developers: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+## Example Prompts
+
+> "Search for Stephansplatz and show it on the map"
+> *(geocode.search, demo offline or live with `--live`)*
+
+> "Find all pharmacies in Vienna's 1st district and ingest them as a layer"
+> *(overpass.query key=amenity value=pharmacy + bbox, `--live --ingest`)*
+
+> "List the project layers with feature counts"
+> *(layer.list — sources, geometry, visibility, counts)*
+
+## Documentation
+
+| Doc | Contents |
+|-----|----------|
+| [Installation](INSTALL.md) | All install methods, prerequisites |
+| [Onboarding](docs/ONBOARDING.md) | First run: QGIS side-by-side, keyless APIs, smoke test |
+| [Wrapped app](docs/WRAPPEE.md) | QGIS: what it is, official links, community |
+| [Plugin strategy](docs/plugins.md) | Why MCP tools are our plugin system |
+| [Architecture](docs/ARCHITECTURE.md) | L1/L2/L3, command bus, DB-as-project, stdio framing |
+| [Configuration](docs/CONFIGURATION.md) | Env vars, config options |
+| [Tool Reference](docs/TOOLS.md) | All 9 MCP tools |
+| [Parity target](docs/target-app-parity.md) | QGIS scope, oracle loop |
+| [UI parity](docs/ui-parity.md) | Measured checklist vs running QGIS |
+| [Development](docs/DEVELOPMENT.md) | Setup, recipes, gates |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues |
+| [Assessment](docs/assessment.md) | Tentative self-review + cross-checks |
+
+## Requirements
+
+Windows 10/11 64-bit (primary), Rust stable via rustup, MSVC linker
+("Desktop development with C++"). No accounts, no API keys, no Docker.
+
+## License
+
+MIT OR Apache-2.0. QGIS itself is GPLv2+ and not included; map tiles
+(c) OpenStreetMap contributors (ODbL) — attribution shown in-app.

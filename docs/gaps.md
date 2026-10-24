@@ -10,6 +10,7 @@ DONE:
 - Geocode: demo + Photon live. Overpass: fenced builder + dry-run + live + `--ingest` (full geometry).
 - XYZ tile underlay (cached, progressive), Web Mercator canvas, pull-model BMP preview with fills.
 - Ways/polygons/lines with selected-layer labels; fill pixel-proven (`docs/map-preview.png`).
+- Standard readme stack: README/INSTALL/llms/glama + full `docs/` (WRAPPEE, plugins strategy, CONFIG, DEV, ARCH, TOOLS, TROUBLE, ONBOARDING, index); plugin answer = MCP tools are the plugin system.
 - Oracle rig: QGIS 3.44.15 LTR side-by-side; `plan/qgis/` observations (gitignored); `docs/ui-parity.md`.
 
 NEXT (in sequence):
