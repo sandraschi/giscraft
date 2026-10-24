@@ -1,5 +1,12 @@
 # Changelog - qgiscraft-mcp
 
+## 2026-10-24 - Phase 0.8: basemap underlay (you can see a map now)
+- XYZ raster tiles (OSM, cache-first disk cache, max 2 fetches/frame, progressive paint-in) under vector points.
+- Web Mercator throughout: canvas, fit, zoom (slippy 2..19), status shows z + 1:scale.
+- Pull-model BMP preview (no more subpixel grid); OSM attribution on canvas + docs.
+- First light with streets: 29 Vienna pharmacies over Innere Stadt tiles, `docs/map-preview.png`.
+- Gates green: 39 tests (5 new tile math), clippy -D warnings, fmt, xtask ci.
+
 ## 2026-10-24 - Phase 0.7: hygiene batch (assessment findings)
 - Env rename `QGISCRRAFT_DB` -> `QGISCRAFT_DB` (was misspelled since 0.1; fixed before anything depended on it).
 - `parity-checklist.md` rewritten honestly: toolbars/box-zoom/F6/WMS dialogs unchecked, Overpass+Photon checked, `--smoke` BMP instead of kittest claim.

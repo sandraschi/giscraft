@@ -15,6 +15,7 @@ pub mod geo;
 pub mod geocode;
 pub mod overpass;
 pub mod project;
+pub mod tiles;
 
 use error::GisError;
 use serde_json::{json, Value};

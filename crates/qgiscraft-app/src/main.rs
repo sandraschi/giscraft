@@ -9,7 +9,9 @@
 #![deny(clippy::todo)]
 
 use eframe::egui;
+use qgiscraft_core::tiles;
 use qgiscraft_store as store;
+use std::collections::HashMap;
 
 struct LayerRow {
     id: String,
@@ -26,15 +28,36 @@ struct QgisCraftApp {
     status: String,
     log: Vec<String>,
     next_n: usize,
-    map_zoom: f32,
+    zoom: f32,
     center_lng: f64,
     center_lat: f64,
     fit_requested: bool,
+    textures: HashMap<(u8, i64, i64), egui::TextureHandle>,
 }
 
-/// Pixels per degree latitude at zoom 1. Longitude is cos-corrected
-/// for the view latitude (Vienna: 1 deg lng ~ 0.67 deg lat in km).
-const PX_PER_DEG: f32 = 120.0;
+/// Pixels per world at zoom 0. Float zoom behaves like a slippy map:
+/// zoom+1 doubles the scale, matching XYZ tile zooms.
+fn world_px(zoom: f32) -> f64 {
+    256.0 * 2_f64.powf(zoom as f64)
+}
+
+fn merc_x(lng: f64, world: f64) -> f64 {
+    world * (lng + 180.0) / 360.0
+}
+
+fn merc_y(lat: f64, world: f64) -> f64 {
+    let r = lat.clamp(-85.05112878, 85.05112878).to_radians();
+    world * (1.0 - (r.tan() + 1.0 / r.cos()).ln() / std::f64::consts::PI) / 2.0
+}
+
+fn merc_lng(x: f64, world: f64) -> f64 {
+    x / world * 360.0 - 180.0
+}
+
+fn merc_lat(y: f64, world: f64) -> f64 {
+    let t = std::f64::consts::PI * (1.0 - 2.0 * y / world);
+    t.sinh().atan().to_degrees()
+}
 
 fn project(
     lng: f64,
@@ -44,12 +67,11 @@ fn project(
     zoom: f32,
     rect: &egui::Rect,
 ) -> egui::Pos2 {
-    let k = PX_PER_DEG * zoom;
-    let cos_lat = center_lat.to_radians().cos() as f32;
+    let world = world_px(zoom);
     let center = rect.center();
     egui::Pos2::new(
-        center.x + ((lng - center_lng) as f32 * cos_lat * k),
-        center.y - ((lat - center_lat) as f32 * k),
+        center.x + (merc_x(lng, world) - merc_x(center_lng, world)) as f32,
+        center.y + (merc_y(lat, world) - merc_y(center_lat, world)) as f32,
     )
 }
 
@@ -60,16 +82,11 @@ fn unproject(
     zoom: f32,
     rect: &egui::Rect,
 ) -> (f64, f64) {
-    let k = PX_PER_DEG * zoom;
-    let cos_lat = center_lat.to_radians().cos() as f32;
+    let world = world_px(zoom);
     let center = rect.center();
-    let lng = if cos_lat.abs() > f32::EPSILON {
-        center_lng + ((pos.x - center.x) / k / cos_lat) as f64
-    } else {
-        center_lng
-    };
-    let lat = center_lat + ((center.y - pos.y) / k) as f64;
-    (lng, lat)
+    let x = merc_x(center_lng, world) + (pos.x - center.x) as f64;
+    let y = merc_y(center_lat, world) + (pos.y - center.y) as f64;
+    (merc_lng(x, world), merc_lat(y, world))
 }
 
 /// High-contrast dark: near-black surfaces, bright text/selection.
@@ -99,10 +116,11 @@ impl QgisCraftApp {
             status: "render on".to_string(),
             log: Vec::new(),
             next_n: 1,
-            map_zoom: 1.0,
+            zoom: 15.0,
             center_lng: 16.3738,
             center_lat: 48.2082,
             fit_requested: true,
+            textures: HashMap::new(),
         };
         // Seed an empty project the way QGIS opens with a default basemap.
         match store::open_default() {
@@ -180,7 +198,7 @@ impl QgisCraftApp {
         {
             self.center_lng = clng;
             self.center_lat = clat;
-            self.map_zoom = zoom;
+            self.zoom = zoom;
             self.status = "fit".to_string();
         }
     }
@@ -238,11 +256,14 @@ impl eframe::App for QgisCraftApp {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| self.db_path.clone());
             ui.horizontal(|ui| {
+                // Web Mercator scale at 96 dpi: meters/px * px/m.
+                let mpp = 156543.03392 * self.center_lat.to_radians().cos()
+                    / 2_f64.powf(self.zoom as f64);
                 ui.label(format!(
-                    "{} | EPSG:3857 | 1:{} ({}%) | {}",
+                    "{} | EPSG:3857 | z{:.1} 1:{} | {}",
                     db_name,
-                    (25_000.0 / self.map_zoom).round() as u32,
-                    (self.map_zoom * 100.0).round() as u32,
+                    self.zoom,
+                    (mpp * 3779.527).round() as u64,
                     self.status.clone()
                 ));
                 if let Some(last) = self.log.last() {
@@ -347,15 +368,18 @@ impl eframe::App for QgisCraftApp {
             }
         });
 
-        // Center: map canvas. Ctrl+wheel zooms to cursor (QGIS muscle
-        // memory); drag pans; Fit data frames visible features.
+        // Center: map canvas. XYZ tiles under vector points; Ctrl+wheel
+        // zooms to cursor (slippy zoom, QGIS muscle memory); drag pans.
         egui::CentralPanel::default().show(ui, |ui| {
             let shown: usize = self
                 .features
                 .iter()
                 .filter(|f| self.is_visible(f.layer_id.as_str()))
                 .count();
-            ui.heading(format!("Map canvas ({shown} points, zoom: Ctrl+wheel)"));
+            ui.heading(format!(
+                "Map canvas ({shown} points, z{:.1}, zoom: Ctrl+wheel)",
+                self.zoom
+            ));
             let (resp, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
             let rect = resp.rect;
@@ -364,23 +388,75 @@ impl eframe::App for QgisCraftApp {
                 self.fit_requested = false;
                 self.fit_to_data(&rect);
             }
-            // Crosshair at view center so zoom has a visible anchor.
-            let center = rect.center();
-            let arm = 24.0 * self.map_zoom;
-            painter.line_segment(
-                [
-                    center + egui::Vec2::new(-arm, 0.0),
-                    center + egui::Vec2::new(arm, 0.0),
-                ],
-                egui::Stroke::new(1.5, egui::Color32::from_rgb(0x7c, 0xb8, 0xff)),
-            );
-            painter.line_segment(
-                [
-                    center + egui::Vec2::new(0.0, -arm),
-                    center + egui::Vec2::new(0.0, arm),
-                ],
-                egui::Stroke::new(1.5, egui::Color32::from_rgb(0x7c, 0xb8, 0xff)),
-            );
+            // XYZ underlay: integer tile zoom nearest the float view zoom.
+            // Cache-first sync fetch, max 2 network misses per frame so the
+            // UI paints in progressively instead of freezing (async worker
+            // is the follow-up; see gaps).
+            let tile_z = (self.zoom.floor() as i64).clamp(0, 19) as u8;
+            let (wlng, nlat) =
+                unproject(rect.min, self.center_lng, self.center_lat, self.zoom, &rect);
+            let (elng, slat) =
+                unproject(rect.max, self.center_lng, self.center_lat, self.zoom, &rect);
+            match tiles::bbox_to_tiles(wlng, slat, elng, nlat, tile_z) {
+                Ok(list) => {
+                    let mut fetched = 0_usize;
+                    for t in list {
+                        let key = (t.z, t.x, t.y);
+                        if !self.textures.contains_key(&key) && fetched >= 2 {
+                            continue;
+                        }
+                        let loaded = match self.textures.entry(key) {
+                            std::collections::hash_map::Entry::Occupied(_) => true,
+                            std::collections::hash_map::Entry::Vacant(slot) => {
+                                fetched += 1;
+                                match tiles::fetch_tile_png(t)
+                                    .and_then(|png| tiles::decode_png_rgba(&png))
+                                {
+                                    Ok((w, h, rgba)) => {
+                                        let img = egui::ColorImage::from_rgba_unmultiplied(
+                                            [w as usize, h as usize],
+                                            &rgba,
+                                        );
+                                        let handle = ui.ctx().load_texture(
+                                            format!("tile_{}_{}_{}", t.z, t.x, t.y),
+                                            img,
+                                            egui::TextureOptions::LINEAR,
+                                        );
+                                        slot.insert(handle);
+                                        true
+                                    }
+                                    Err(fetch_err) => {
+                                        self.status = format!("tile {fetch_err}");
+                                        false
+                                    }
+                                }
+                            }
+                        };
+                        if !loaded {
+                            continue;
+                        }
+                        if let Some(handle) = self.textures.get(&key) {
+                            let (x0, y0, x1, y1) = tiles::tile_bounds(t);
+                            let a =
+                                project(x0, y1, self.center_lng, self.center_lat, self.zoom, &rect);
+                            let b =
+                                project(x1, y0, self.center_lng, self.center_lat, self.zoom, &rect);
+                            painter.image(
+                                handle.id(),
+                                egui::Rect::from_min_max(a, b),
+                                egui::Rect::from_min_max(
+                                    egui::Pos2::ZERO,
+                                    egui::Pos2::new(1.0, 1.0),
+                                ),
+                                egui::Color32::WHITE,
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.status = format!("tiles: {e}");
+                }
+            }
             // Points: cyan, selected layer orange, off-canvas culled.
             for feat in &self.features {
                 if !self.is_visible(feat.layer_id.as_str()) {
@@ -391,7 +467,7 @@ impl eframe::App for QgisCraftApp {
                     feat.lat,
                     self.center_lng,
                     self.center_lat,
-                    self.map_zoom,
+                    self.zoom,
                     &rect,
                 );
                 if !rect.contains(pos) {
@@ -410,6 +486,13 @@ impl eframe::App for QgisCraftApp {
                 egui::Stroke::new(1.0, egui::Color32::from_gray(0x60)),
                 egui::StrokeKind::Inside,
             );
+            painter.text(
+                rect.right_bottom() + egui::Vec2::new(-8.0, -20.0),
+                egui::Align2::RIGHT_BOTTOM,
+                "(c) OpenStreetMap contributors",
+                egui::FontId::proportional(10.0),
+                egui::Color32::from_gray(0xb0),
+            );
             // eframe feeds wheel + trackpad into the smooth channel;
             // raw deltas are not exposed on this egui version.
             let (ctrl, scroll, hover) = ui.input(|input| {
@@ -422,31 +505,21 @@ impl eframe::App for QgisCraftApp {
             if resp.hovered() && ctrl && scroll != 0.0 {
                 // Zoom to cursor: anchor the geo under the pointer.
                 let anchor = hover.unwrap_or(rect.center());
-                let (glng, glat) = unproject(
-                    anchor,
-                    self.center_lng,
-                    self.center_lat,
-                    self.map_zoom,
-                    &rect,
-                );
-                self.map_zoom = (self.map_zoom * (1.0 + scroll * 0.001)).clamp(0.25, 64.0);
-                let k = PX_PER_DEG * self.map_zoom;
-                let cos_lat = self.center_lat.to_radians().cos() as f32;
+                let (glng, glat) =
+                    unproject(anchor, self.center_lng, self.center_lat, self.zoom, &rect);
+                self.zoom = (self.zoom + scroll * 0.01).clamp(2.0, 19.0);
+                let world = world_px(self.zoom);
                 let c = rect.center();
-                if cos_lat.abs() > f32::EPSILON {
-                    self.center_lng = glng - ((anchor.x - c.x) / k / cos_lat) as f64;
-                }
-                self.center_lat = glat + ((anchor.y - c.y) / k) as f64;
+                self.center_lng = merc_lng(merc_x(glng, world) - (anchor.x - c.x) as f64, world);
+                self.center_lat = merc_lat(merc_y(glat, world) - (anchor.y - c.y) as f64, world);
                 self.status = "zoom".to_string();
             }
             if resp.dragged() {
+                // Grab-and-drag: content follows the cursor.
                 let delta = resp.drag_delta();
-                let k = PX_PER_DEG * self.map_zoom;
-                let cos_lat = self.center_lat.to_radians().cos() as f32;
-                if cos_lat.abs() > f32::EPSILON {
-                    self.center_lng -= (delta.x / k / cos_lat) as f64;
-                }
-                self.center_lat += (delta.y / k) as f64;
+                let world = world_px(self.zoom);
+                self.center_lng = merc_lng(merc_x(self.center_lng, world) - delta.x as f64, world);
+                self.center_lat = merc_lat(merc_y(self.center_lat, world) - delta.y as f64, world);
                 self.status = "pan".to_string();
             }
         });
@@ -468,40 +541,49 @@ fn fit_view(
             .map(|l| l.visible)
             .unwrap_or(false)
     };
-    let mut min_lng = f64::INFINITY;
-    let mut max_lng = f64::NEG_INFINITY;
-    let mut min_lat = f64::INFINITY;
-    let mut max_lat = f64::NEG_INFINITY;
+    let mut min_x = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
     for feat in features {
         if !visible(feat.layer_id.as_str()) {
             continue;
         }
-        min_lng = min_lng.min(feat.lng);
-        max_lng = max_lng.max(feat.lng);
-        min_lat = min_lat.min(feat.lat);
-        max_lat = max_lat.max(feat.lat);
+        // World01 (zoom-0 px / 256): zoom-independent, no overflow.
+        let x = (feat.lng + 180.0) / 360.0;
+        let r = feat.lat.clamp(-85.05112878, 85.05112878).to_radians();
+        let y = (1.0 - (r.tan() + 1.0 / r.cos()).ln() / std::f64::consts::PI) / 2.0;
+        min_x = min_x.min(x);
+        max_x = max_x.max(x);
+        min_y = min_y.min(y);
+        max_y = max_y.max(y);
     }
-    if min_lng.is_infinite() {
+    if min_x.is_infinite() {
         return None;
     }
-    let clng = (min_lng + max_lng) / 2.0;
-    let clat = (min_lat + max_lat) / 2.0;
+    let cx = (min_x + max_x) / 2.0;
+    let cy = (min_y + max_y) / 2.0;
     // 20% padding so edge points never sit under the frame.
-    let span_lng = ((max_lng - min_lng) * 1.2).max(0.002);
-    let span_lat = ((max_lat - min_lat) * 1.2).max(0.002);
-    let cos_lat = clat.to_radians().cos() as f32;
-    let kx = width / (span_lng as f32 * cos_lat * PX_PER_DEG);
-    let ky = height / (span_lat as f32 * PX_PER_DEG);
-    Some((clng, clat, kx.min(ky).clamp(0.25, 64.0)))
+    let span_x = ((max_x - min_x) * 1.2).max(1e-9);
+    let span_y = ((max_y - min_y) * 1.2).max(1e-9);
+    let zoom = (width / (span_x * 256.0) as f32).min(height / (span_y * 256.0) as f32);
+    let zoom = zoom.log2().clamp(2.0, 19.0);
+    // Back to lng/lat.
+    let clng = cx * 360.0 - 180.0;
+    let t = std::f64::consts::PI * (1.0 - 2.0 * cy);
+    let clat = t.sinh().atan().to_degrees();
+    Some((clng, clat, zoom))
 }
 
-/// Headless BMP preview (24-bit, no deps): same `project` math as the
-/// canvas, dark bg, cyan points. Lets a windowless session see the map.
+/// Headless BMP preview (24-bit, hand-rolled): same `project` math as the
+/// canvas, XYZ tiles under cyan points. Lets a windowless session see the
+/// map. `with_tiles=false` keeps unit tests offline; smoke passes true.
 fn render_preview(
     features: &[store::StoredFeature],
     layers: &[LayerRow],
     width: u32,
     height: u32,
+    with_tiles: bool,
 ) -> Result<Vec<u8>, String> {
     if width == 0 || height == 0 || width > 4096 || height > 4096 {
         return Err("preview size must be 1..4096".to_string());
@@ -511,7 +593,7 @@ fn render_preview(
         egui::Vec2::new(width as f32, height as f32),
     );
     let (clng, clat, zoom) =
-        fit_view(features, layers, width as f32, height as f32).unwrap_or((16.3738, 48.2082, 1.0));
+        fit_view(features, layers, width as f32, height as f32).unwrap_or((16.3738, 48.2082, 15.0));
     // BGR pixels, near-black bg.
     let mut px = vec![8_u8; (width as usize) * (height as usize) * 3];
     for y in 0..height {
@@ -522,7 +604,7 @@ fn render_preview(
             px[i + 2] = 5;
         }
     }
-    let plot = |px: &mut [u8], x: i32, y: i32, b: u8, g: u8, r: u8| {
+    let mut plot = |x: i32, y: i32, b: u8, g: u8, r: u8| {
         if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
             return;
         }
@@ -534,6 +616,48 @@ fn render_preview(
             px[i + 2] = r;
         }
     };
+    // Tiles first (best-effort: any failure leaves dark bg, never aborts).
+    // Pull-model: iterate destination pixels inside each tile's screen
+    // rect and sample the source (nearest). Push-model (one plot per
+    // source pixel) leaves subpixel gaps at non-integer zooms.
+    if with_tiles {
+        let tile_z = (zoom.floor() as i64).clamp(0, 19) as u8;
+        let (wlng, nlat) = unproject(rect.min, clng, clat, zoom, &rect);
+        let (elng, slat) = unproject(rect.max, clng, clat, zoom, &rect);
+        if let Ok(list) = tiles::bbox_to_tiles(wlng, slat, elng, nlat, tile_z) {
+            for t in list {
+                let png = match tiles::fetch_tile_png(t) {
+                    Ok(png) => png,
+                    Err(_) => continue,
+                };
+                let (tw, th, rgba) = match tiles::decode_png_rgba(&png) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let (tmin_lng, tmin_lat, tmax_lng, tmax_lat) = tiles::tile_bounds(t);
+                let a = project(tmin_lng, tmax_lat, clng, clat, zoom, &rect);
+                let b = project(tmax_lng, tmin_lat, clng, clat, zoom, &rect);
+                let x0 = a.x.floor() as i32;
+                let x1 = b.x.ceil() as i32;
+                let y0 = a.y.floor() as i32;
+                let y1 = b.y.ceil() as i32;
+                let denom_x = (b.x - a.x).max(1.0);
+                let denom_y = (b.y - a.y).max(1.0);
+                for dy in y0..=y1 {
+                    for dx in x0..=x1 {
+                        let sxx = (((dx as f32 - a.x) / denom_x * tw as f32) as i64)
+                            .clamp(0, tw as i64 - 1) as u32;
+                        let syy = (((dy as f32 - a.y) / denom_y * th as f32) as i64)
+                            .clamp(0, th as i64 - 1) as u32;
+                        let si = ((syy * tw + sxx) * 4) as usize;
+                        if si + 2 < rgba.len() {
+                            plot(dx, dy, rgba[si + 2], rgba[si + 1], rgba[si]);
+                        }
+                    }
+                }
+            }
+        }
+    }
     for feat in features {
         let vis = layers
             .iter()
@@ -550,7 +674,7 @@ fn render_preview(
         for dy in -2..=2 {
             for dx in -2..=2 {
                 if dx * dx + dy * dy <= 6 {
-                    plot(&mut px, cx + dx, cy + dy, 0xf0, 0xc9, 0x4c);
+                    plot(cx + dx, cy + dy, 0xf0, 0xc9, 0x4c);
                 }
             }
         }
@@ -596,7 +720,7 @@ fn smoke() {
     }
     let mut preview_path = std::env::temp_dir();
     preview_path.push(format!("qgiscraft-preview-{}.bmp", std::process::id()));
-    match render_preview(&app.features, &app.layers, 1280, 860) {
+    match render_preview(&app.features, &app.layers, 1280, 860, true) {
         Ok(bytes) => match std::fs::write(&preview_path, &bytes) {
             Ok(()) => println!("preview: {}", preview_path.to_string_lossy()),
             Err(e) => println!("preview write failed: {e}"),
@@ -657,10 +781,10 @@ mod tests {
     }
 
     #[test]
-    fn zoom_scales_linearly() {
+    fn zoom_doubles_scale_per_level() {
         let rect = test_rect();
-        let a = project(16.3838, 48.2082, 16.3738, 48.2082, 1.0, &rect);
-        let b = project(16.3838, 48.2082, 16.3738, 48.2082, 2.0, &rect);
+        let a = project(16.3838, 48.2082, 16.3738, 48.2082, 15.0, &rect);
+        let b = project(16.3838, 48.2082, 16.3738, 48.2082, 16.0, &rect);
         let center = rect.center();
         assert!(((b.x - center.x) / (a.x - center.x) - 2.0).abs() < 0.01);
     }
@@ -698,9 +822,9 @@ mod tests {
         let fit = fit_view(&test_features(), &test_layers(), 800.0, 600.0);
         assert!(fit.is_some());
         if let Some((clng, clat, zoom)) = fit {
-            assert!((clng - 16.35).abs() < 1e-9);
-            assert!((clat - 48.225).abs() < 1e-9);
-            assert!((0.25..=64.0).contains(&zoom));
+            assert!((clng - 16.35).abs() < 1e-6);
+            assert!((clat - 48.225).abs() < 1e-3);
+            assert!((2.0..=19.0).contains(&zoom));
         }
     }
 
@@ -711,9 +835,9 @@ mod tests {
 
     #[test]
     fn render_preview_is_bmp_and_rejects_hostile_size() {
-        assert!(render_preview(&test_features(), &test_layers(), 0, 600).is_err());
-        assert!(render_preview(&test_features(), &test_layers(), 5000, 600).is_err());
-        let bmp = render_preview(&test_features(), &test_layers(), 320, 200);
+        assert!(render_preview(&test_features(), &test_layers(), 0, 600, false).is_err());
+        assert!(render_preview(&test_features(), &test_layers(), 5000, 600, false).is_err());
+        let bmp = render_preview(&test_features(), &test_layers(), 320, 200, false);
         assert!(bmp.is_ok());
         if let Ok(bytes) = bmp {
             assert!(bytes.len() > 54);
