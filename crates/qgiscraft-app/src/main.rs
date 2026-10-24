@@ -190,8 +190,84 @@ impl QgisCraftApp {
             .map(|l| l.visible)
             .unwrap_or(false)
     }
+}
 
-    /// Frame visible features with padding. No-op when nothing is visible.
+/// Deterministic per-layer color from a fixed high-contrast palette.
+/// Same layer id always maps to the same color (canvas + preview agree).
+fn layer_color(id: &str) -> egui::Color32 {
+    const PALETTE: [[u8; 3]; 8] = [
+        [0x4c, 0xc9, 0xf0],
+        [0xff, 0xb0, 0x26],
+        [0x80, 0xed, 0x99],
+        [0xff, 0x70, 0xa6],
+        [0xff, 0xe0, 0x66],
+        [0xc7, 0x7d, 0xff],
+        [0xff, 0x59, 0x64],
+        [0x64, 0xdf, 0xdf],
+    ];
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in id.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    let c = PALETTE[(h as usize) % PALETTE.len()];
+    egui::Color32::from_rgb(c[0], c[1], c[2])
+}
+
+/// Drawable geometry parsed from a feature's `geom_json`.
+/// Points (None) fall back to the centroid dot.
+enum Geom {
+    Line(Vec<(f64, f64)>),
+    Poly(Vec<(f64, f64)>),
+}
+
+fn parse_geom(feat: &store::StoredFeature) -> Option<Geom> {
+    let raw = feat.geom_json.as_ref()?;
+    let v: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let ty = v.get("type").and_then(|t| t.as_str())?;
+    let rings = v.get("coordinates")?;
+    let first_ring = if ty == "Polygon" {
+        rings.get(0)?
+    } else if ty == "LineString" {
+        rings
+    } else {
+        return None;
+    };
+    let arr = first_ring.as_array()?;
+    let mut pts = Vec::new();
+    for pt in arr {
+        let lng = pt.get(0).and_then(|n| n.as_f64());
+        let lat = pt.get(1).and_then(|n| n.as_f64());
+        match (lng, lat) {
+            (Some(lng), Some(lat))
+                if (-180.0..=180.0).contains(&lng) && (-90.0..=90.0).contains(&lat) =>
+            {
+                pts.push((lng, lat))
+            }
+            _ => continue,
+        }
+    }
+    if ty == "Polygon" {
+        if pts.len() < 3 {
+            return None;
+        }
+        // Auto-close unclosed rings (renderers, including QGIS, do this).
+        if pts.first() != pts.last() {
+            if let Some(first) = pts.first().copied() {
+                pts.push(first);
+            }
+        }
+        Some(Geom::Poly(pts))
+    } else {
+        if pts.len() < 2 {
+            return None;
+        }
+        Some(Geom::Line(pts))
+    }
+}
+
+/// Frame visible features with padding. No-op when nothing is visible.
+impl QgisCraftApp {
     fn fit_to_data(&mut self, rect: &egui::Rect) {
         if let Some((clng, clat, zoom)) =
             fit_view(&self.features, &self.layers, rect.width(), rect.height())
@@ -457,28 +533,88 @@ impl eframe::App for QgisCraftApp {
                     self.status = format!("tiles: {e}");
                 }
             }
-            // Points: cyan, selected layer orange, off-canvas culled.
+            // Geometry: polygons filled, lines stroked, points dotted.
+            // Per-layer palette; selected layer also gets name labels.
             for feat in &self.features {
                 if !self.is_visible(feat.layer_id.as_str()) {
                     continue;
                 }
-                let pos = project(
-                    feat.lng,
-                    feat.lat,
-                    self.center_lng,
-                    self.center_lat,
-                    self.zoom,
-                    &rect,
-                );
-                if !rect.contains(pos) {
-                    continue;
+                let color = layer_color(feat.layer_id.as_str());
+                let selected = self.selected.as_ref() == Some(&feat.layer_id);
+                match parse_geom(feat) {
+                    Some(Geom::Poly(ring)) => {
+                        // Outline only: proper concave fill needs earcut
+                        // triangulation (follow-up, not convex hull).
+                        let pts: Vec<egui::Pos2> = ring
+                            .iter()
+                            .map(|(lng, lat)| {
+                                project(
+                                    *lng,
+                                    *lat,
+                                    self.center_lng,
+                                    self.center_lat,
+                                    self.zoom,
+                                    &rect,
+                                )
+                            })
+                            .collect();
+                        if pts.iter().any(|p| rect.contains(*p)) {
+                            painter
+                                .add(egui::Shape::closed_line(pts, egui::Stroke::new(2.0, color)));
+                        }
+                    }
+                    Some(Geom::Line(line)) => {
+                        let pts: Vec<egui::Pos2> = line
+                            .iter()
+                            .map(|(lng, lat)| {
+                                project(
+                                    *lng,
+                                    *lat,
+                                    self.center_lng,
+                                    self.center_lat,
+                                    self.zoom,
+                                    &rect,
+                                )
+                            })
+                            .collect();
+                        if pts.iter().any(|p| rect.contains(*p)) {
+                            painter.add(egui::Shape::line(pts, egui::Stroke::new(2.0, color)));
+                        }
+                    }
+                    None => {
+                        let pos = project(
+                            feat.lng,
+                            feat.lat,
+                            self.center_lng,
+                            self.center_lat,
+                            self.zoom,
+                            &rect,
+                        );
+                        if !rect.contains(pos) {
+                            continue;
+                        }
+                        painter.circle_filled(pos, 4.0, color);
+                    }
                 }
-                let color = if self.selected.as_ref() == Some(&feat.layer_id) {
-                    egui::Color32::from_rgb(0xff, 0xb0, 0x26)
-                } else {
-                    egui::Color32::from_rgb(0x4c, 0xc9, 0xf0)
-                };
-                painter.circle_filled(pos, 4.0, color);
+                if selected {
+                    let pos = project(
+                        feat.lng,
+                        feat.lat,
+                        self.center_lng,
+                        self.center_lat,
+                        self.zoom,
+                        &rect,
+                    );
+                    if rect.contains(pos) {
+                        painter.text(
+                            pos + egui::Vec2::new(6.0, -6.0),
+                            egui::Align2::LEFT_BOTTOM,
+                            feat.name.clone(),
+                            egui::FontId::proportional(11.0),
+                            egui::Color32::from_gray(0xe8),
+                        );
+                    }
+                }
             }
             painter.rect_stroke(
                 rect,
@@ -667,14 +803,51 @@ fn render_preview(
         if !vis {
             continue;
         }
-        let pos = project(feat.lng, feat.lat, clng, clat, zoom, &rect);
-        let cx = pos.x.round() as i32;
-        let cy = pos.y.round() as i32;
-        // 4px disk, cyan.
-        for dy in -2..=2 {
-            for dx in -2..=2 {
-                if dx * dx + dy * dy <= 6 {
-                    plot(cx + dx, cy + dy, 0xf0, 0xc9, 0x4c);
+        // Same palette as the canvas; DDA rasterization for lines/rings.
+        let c = layer_color(feat.layer_id.as_str());
+        let (cr, cg, cb) = (c.r(), c.g(), c.b());
+        let mut seg = |x0: i32, y0: i32, x1: i32, y1: i32| {
+            let steps = (x1 - x0).abs().max((y1 - y0).abs()).max(1);
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                plot(
+                    (x0 as f32 + (x1 - x0) as f32 * t).round() as i32,
+                    (y0 as f32 + (y1 - y0) as f32 * t).round() as i32,
+                    cb,
+                    cg,
+                    cr,
+                );
+            }
+        };
+        match parse_geom(feat) {
+            Some(Geom::Poly(ring)) | Some(Geom::Line(ring)) => {
+                let closed = matches!(parse_geom(feat), Some(Geom::Poly(_)));
+                let pts: Vec<(i32, i32)> = ring
+                    .iter()
+                    .map(|(lng, lat)| {
+                        let p = project(*lng, *lat, clng, clat, zoom, &rect);
+                        (p.x.round() as i32, p.y.round() as i32)
+                    })
+                    .collect();
+                let n = pts.len();
+                let end = if closed { n } else { n.saturating_sub(1) };
+                for i in 0..end {
+                    let (x0, y0) = pts[i % n];
+                    let (x1, y1) = pts[(i + 1) % n];
+                    seg(x0, y0, x1, y1);
+                }
+            }
+            None => {
+                let pos = project(feat.lng, feat.lat, clng, clat, zoom, &rect);
+                let cx = pos.x.round() as i32;
+                let cy = pos.y.round() as i32;
+                // 4px disk.
+                for dy in -2..=2 {
+                    for dx in -2..=2 {
+                        if dx * dx + dy * dy <= 6 {
+                            plot(cx + dx, cy + dy, cb, cg, cr);
+                        }
+                    }
                 }
             }
         }
@@ -806,6 +979,7 @@ mod tests {
                 kind: "node".to_string(),
                 lng: 16.30,
                 lat: 48.20,
+                geom_json: None,
             },
             store::StoredFeature {
                 layer_id: "rx".to_string(),
@@ -813,6 +987,7 @@ mod tests {
                 kind: "node".to_string(),
                 lng: 16.40,
                 lat: 48.25,
+                geom_json: None,
             },
         ]
     }
@@ -843,5 +1018,51 @@ mod tests {
             assert!(bytes.len() > 54);
             assert_eq!(&bytes[0..2], b"BM");
         }
+    }
+
+    fn geom_feature(geom: &str) -> store::StoredFeature {
+        store::StoredFeature {
+            layer_id: "rx".to_string(),
+            name: "G".to_string(),
+            kind: "way".to_string(),
+            lng: 16.35,
+            lat: 48.225,
+            geom_json: Some(geom.to_string()),
+        }
+    }
+
+    #[test]
+    fn parse_geom_accepts_line_and_polygon() {
+        let line =
+            geom_feature(r#"{"type":"LineString","coordinates":[[16.3,48.2],[16.4,48.25]]}"#);
+        assert!(matches!(parse_geom(&line), Some(Geom::Line(_))));
+        let poly = geom_feature(
+            r#"{"type":"Polygon","coordinates":[[[16.3,48.2],[16.4,48.2],[16.4,48.25],[16.3,48.2]]]}"#,
+        );
+        assert!(matches!(parse_geom(&poly), Some(Geom::Poly(_))));
+    }
+
+    #[test]
+    fn parse_geom_rejects_garbage() {
+        let no_geom = store::StoredFeature {
+            geom_json: None,
+            ..test_features()[0].clone()
+        };
+        assert!(parse_geom(&no_geom).is_none());
+        let bad_type = geom_feature(r#"{"type":"MultiPoint","coordinates":[[16.3,48.2]]}"#);
+        assert!(parse_geom(&bad_type).is_none());
+        let bad_json = geom_feature("{not json");
+        assert!(parse_geom(&bad_json).is_none());
+        let short_line = geom_feature(r#"{"type":"LineString","coordinates":[[16.3,48.2]]}"#);
+        assert!(parse_geom(&short_line).is_none());
+        let oob =
+            geom_feature(r#"{"type":"LineString","coordinates":[[999.0,48.2],[16.4,48.25]]}"#);
+        // One bad point skipped, one good point left -> too short.
+        assert!(parse_geom(&oob).is_none());
+    }
+
+    #[test]
+    fn layer_color_is_deterministic() {
+        assert_eq!(layer_color("a"), layer_color("a"));
     }
 }

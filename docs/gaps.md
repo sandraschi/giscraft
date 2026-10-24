@@ -1,17 +1,18 @@
-# docs/gaps.md - ranked work list (v0.8: basemap landed)
+# docs/gaps.md - ranked work list (v0.9: ways + polygons landed)
 
 DONE:
 - Core `Command` bus (9 cmds) + validation hardening.
-- Store SQLite: layers + features + visible + counts + migrations.
+- Store SQLite: layers + features (+geom_json) + visible + counts + migrations.
 - CLI/MCP `--db` persistence (add/list/remove roundtrip proven).
 - MCP stdio: 9 tools, typed schemas.
 - egui shell: DB-backed project, high-contrast theme, Ctrl-wheel zoom-to-cursor (slippy), pan, Fit data, F5 refresh.
-- Geocode: demo + Photon live. Overpass: fenced builder + dry-run + live + `--ingest`.
+- Geocode: demo + Photon live. Overpass: fenced builder + dry-run + live + `--ingest` (full geometry).
 - XYZ tile underlay (cached, progressive), Web Mercator canvas, pull-model BMP preview.
-- First light with streets: 29 Vienna pharmacies over tiles (`docs/map-preview.png`).
+- Ways/polygons: `out geom`, per-layer palette, line strokes, polygon outlines, selected-layer labels.
+- First light with streets: parks + primary roads over tiles (vectors pixel-verified in preview).
 
-NEXT (pick from top, in sequence per 2026-10-24):
-1. Ways/polygons: geometry column (WKB/GeoJSON), line/fill render, per-layer colors, labels.
+NEXT (in sequence):
+1. Concave polygon fill (earcut triangulation, not convex hull).
 2. Symbology single/categorized/graduated dialogs.
 3. Processing Buffer/Clip/Reproject (pure Rust, no GDAL yet).
 4. Print Layout export PNG.

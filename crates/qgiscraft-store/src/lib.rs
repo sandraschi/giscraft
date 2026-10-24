@@ -19,6 +19,8 @@ pub struct StoredLayer {
 }
 
 /// One ingested point feature. Overpass hits land here via `replace_features`.
+/// `geom_json` carries full geometry (GeoJSON LineString/Polygon) when the
+/// element had it; points leave it None. `lng`/`lat` is always the centroid.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredFeature {
     pub layer_id: String,
@@ -26,6 +28,8 @@ pub struct StoredFeature {
     pub kind: String,
     pub lng: f64,
     pub lat: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geom_json: Option<String>,
 }
 
 impl StoredLayer {
@@ -80,16 +84,18 @@ pub fn init_db(conn: &Connection) -> Result<(), StoreError> {
             name TEXT NOT NULL,
             kind TEXT NOT NULL DEFAULT 'node',
             lng REAL NOT NULL,
-            lat REAL NOT NULL
+            lat REAL NOT NULL,
+            geom_json TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_features_layer ON features(layer_id);",
     )
     .map_err(|e| StoreError::Sql(e.to_string()))?;
-    // Migrate pre-0.3 DBs (3- and 5-col schemas): ignore duplicate-column, keep real errors.
+    // Migrate old DBs (3/5/7-col schemas): ignore duplicate-column, keep real errors.
     for alter in [
         "ALTER TABLE layers ADD COLUMN geom_type TEXT NOT NULL DEFAULT 'point'",
         "ALTER TABLE layers ADD COLUMN crs TEXT NOT NULL DEFAULT 'EPSG:4326'",
         "ALTER TABLE layers ADD COLUMN visible INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE features ADD COLUMN geom_json TEXT",
     ] {
         match conn.execute_batch(alter) {
             Ok(()) => {}
@@ -206,8 +212,8 @@ pub fn replace_features(
             continue;
         }
         conn.execute(
-            "INSERT INTO features (layer_id, name, kind, lng, lat) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![layer_id, f.name, f.kind, f.lng, f.lat],
+            "INSERT INTO features (layer_id, name, kind, lng, lat, geom_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![layer_id, f.name, f.kind, f.lng, f.lat, f.geom_json],
         )
         .map_err(|e| StoreError::Sql(e.to_string()))?;
         n += 1;
@@ -222,6 +228,7 @@ fn map_feature(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredFeature> {
         kind: row.get(2)?,
         lng: row.get(3)?,
         lat: row.get(4)?,
+        geom_json: row.get(5)?,
     })
 }
 
@@ -233,7 +240,7 @@ pub fn list_features(
     let mut out = Vec::new();
     if let Some(id) = layer_id {
         let mut stmt = conn
-            .prepare("SELECT layer_id, name, kind, lng, lat FROM features WHERE layer_id = ?1 ORDER BY id LIMIT 500")
+            .prepare("SELECT layer_id, name, kind, lng, lat, geom_json FROM features WHERE layer_id = ?1 ORDER BY id LIMIT 500")
             .map_err(|e| StoreError::Sql(e.to_string()))?;
         let rows = stmt
             .query_map(params![id], map_feature)
@@ -246,7 +253,7 @@ pub fn list_features(
         }
     } else {
         let mut stmt = conn
-            .prepare("SELECT layer_id, name, kind, lng, lat FROM features ORDER BY layer_id, id LIMIT 500")
+            .prepare("SELECT layer_id, name, kind, lng, lat, geom_json FROM features ORDER BY layer_id, id LIMIT 500")
             .map_err(|e| StoreError::Sql(e.to_string()))?;
         let rows = stmt
             .query_map([], map_feature)
@@ -387,6 +394,44 @@ mod tests {
     }
 
     #[test]
+    fn geom_json_roundtrips() {
+        let conn_opt = Connection::open_in_memory().ok();
+        assert!(conn_opt.is_some());
+        if let Some(conn) = conn_opt {
+            assert!(init_db(&conn).is_ok());
+            let layer = StoredLayer::new(
+                "g".to_string(),
+                "G".to_string(),
+                Some("overpass".to_string()),
+                None,
+                None,
+            );
+            assert!(add_layer(&conn, &layer).is_ok());
+            let feats = vec![StoredFeature {
+                layer_id: "g".to_string(),
+                name: "Ring".to_string(),
+                kind: "way".to_string(),
+                lng: 16.35,
+                lat: 48.225,
+                geom_json: Some(
+                    r#"{"type":"LineString","coordinates":[[16.3,48.2],[16.4,48.25]]}"#.to_string(),
+                ),
+            }];
+            let n = replace_features(&conn, "g", &feats);
+            assert!(n.is_ok());
+            let listed = list_features(&conn, Some("g"));
+            assert!(listed.is_ok());
+            if let Ok(rows) = listed {
+                assert_eq!(rows.len(), 1);
+                assert!(rows[0]
+                    .geom_json
+                    .as_ref()
+                    .is_some_and(|g| g.contains("LineString")));
+            }
+        }
+    }
+
+    #[test]
     fn default_db_path_respects_env() {
         let path = default_db_path();
         assert!(!path.as_os_str().is_empty());
@@ -413,6 +458,7 @@ mod tests {
                     kind: "node".to_string(),
                     lng: 16.3,
                     lat: 48.2,
+                    geom_json: None,
                 },
                 StoredFeature {
                     layer_id: "rx".to_string(),
@@ -420,6 +466,7 @@ mod tests {
                     kind: "node".to_string(),
                     lng: 999.0,
                     lat: 48.2,
+                    geom_json: None,
                 },
             ];
             let n = replace_features(&conn, "rx", &feats);

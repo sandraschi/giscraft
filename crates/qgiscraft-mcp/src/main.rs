@@ -238,6 +238,10 @@ fn ingest_hits(db: Option<&str>, layer_id: &str, layer_name: &str, hits: &Value)
                 kind,
                 lng,
                 lat,
+                geom_json: h
+                    .get("geom")
+                    .filter(|g| !g.is_null())
+                    .map(|g| g.to_string()),
             });
         }
     }

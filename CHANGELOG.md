@@ -1,6 +1,11 @@
 # Changelog - qgiscraft-mcp
 
-## 2026-10-24 - Phase 0.8: basemap underlay (you can see a map now)
+## 2026-10-24 - Phase 0.9: ways and polygons
+- Overpass `out geom`: ways distill to LineString/Polygon (+centroid); nodes stay points. `element_to_hit` pure + tested.
+- Store `geom_json` column (GeoJSON, 7->8 col migration); ingest passes geometry through; points keep None.
+- Canvas: per-layer palette (FNV hash, 8 high-contrast colors), line strokes, polygon outlines (no fill yet - concave needs earcut), selected-layer name labels.
+- Preview draws the same geometry (DDA lines/rings); first verified render: parks + primary roads over tiles.
+- Gates green: 46 tests, clippy -D warnings, fmt, xtask ci.
 - XYZ raster tiles (OSM, cache-first disk cache, max 2 fetches/frame, progressive paint-in) under vector points.
 - Web Mercator throughout: canvas, fit, zoom (slippy 2..19), status shows z + 1:scale.
 - Pull-model BMP preview (no more subpixel grid); OSM attribution on canvas + docs.
