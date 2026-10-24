@@ -12,6 +12,7 @@
 
 pub mod error;
 pub mod geo;
+pub mod geocode;
 pub mod project;
 
 use error::GisError;
@@ -46,6 +47,7 @@ pub enum Command {
     GeocodeSearch {
         query: String,
         limit: Option<u8>,
+        live: bool,
     },
     OverpassQuery {
         query: String,
@@ -117,7 +119,7 @@ pub async fn dispatch(cmd: Command) -> Value {
                     .map(|removed| json!({"id": id, "removed": removed})),
             )
         }
-        Command::GeocodeSearch { query, limit } => {
+        Command::GeocodeSearch { query, limit, live } => {
             if query.trim().is_empty() {
                 return json!({"error": "invalid input: query must not be empty", "op": "geocode.search"});
             }
@@ -125,8 +127,16 @@ pub async fn dispatch(cmd: Command) -> Value {
             if lim == 0 || lim > 50 {
                 return json!({"error": "invalid input: limit must be 1..50", "op": "geocode.search"});
             }
-            // Phase 0 deterministic demo (Vienna): live Photon path lands Phase 0.1 env-gated.
-            json!({"query": query, "limit": lim, "results": [{"name": "Stephansplatz, Wien", "lng": 16.3738, "lat": 48.2082, "source": "demo"}], "live": false})
+            if !live {
+                json!({"query": query, "limit": lim, "results": [{"name": "Stephansplatz, Wien", "lng": 16.3738, "lat": 48.2082, "source": "demo"}], "live": false})
+            } else {
+                match geocode::photon_search(&query, lim).await {
+                    Ok(hits) => {
+                        json!({"query": query, "limit": lim, "results": hits, "live": true})
+                    }
+                    Err(e) => json!({"error": e.to_string(), "op": "geocode.search"}),
+                }
+            }
         }
         Command::OverpassQuery { query } => {
             if query.trim().is_empty() {
@@ -180,6 +190,7 @@ mod tests {
         let v = dispatch(Command::GeocodeSearch {
             query: "Stephansplatz".to_string(),
             limit: None,
+            live: false,
         })
         .await;
         assert_eq!(v.get("live").and_then(|b| b.as_bool()), Some(false));

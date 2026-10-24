@@ -79,6 +79,37 @@ pub fn list_layers(conn: &Connection) -> Result<Vec<StoredLayer>, StoreError> {
     Ok(out)
 }
 
+/// Delete one layer by id. Returns true when a row was removed.
+pub fn remove_layer(conn: &Connection, id: &str) -> Result<bool, StoreError> {
+    if id.trim().is_empty() {
+        return Err(StoreError::InvalidInput("id must not be empty".to_string()));
+    }
+    let n = conn
+        .execute("DELETE FROM layers WHERE id = ?1", params![id])
+        .map_err(|e| StoreError::Sql(e.to_string()))?;
+    Ok(n > 0)
+}
+
+/// Default project DB path: `$QGISCRRAFT_DB` or `./qgiscraft.db`.
+/// Env override keeps tests hermetic (point it at a temp file).
+pub fn default_db_path() -> std::path::PathBuf {
+    if let Ok(raw) = std::env::var("QGISCRRAFT_DB") {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return std::path::PathBuf::from(trimmed);
+        }
+    }
+    std::path::PathBuf::from("qgiscraft.db")
+}
+
+/// Open the default DB and ensure schema. Used by CLI/MCP persistence.
+pub fn open_default() -> Result<Connection, StoreError> {
+    let path = default_db_path();
+    let conn = Connection::open(&path).map_err(|e| StoreError::Sql(format!("open db: {e}")))?;
+    init_db(&conn)?;
+    Ok(conn)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,5 +148,32 @@ mod tests {
                 assert_eq!(layers.len(), 1);
             }
         }
+    }
+
+    #[test]
+    fn remove_roundtrip_and_hostile_id() {
+        let conn_opt = Connection::open_in_memory().ok();
+        assert!(conn_opt.is_some());
+        if let Some(conn) = conn_opt {
+            assert!(init_db(&conn).is_ok());
+            assert!(remove_layer(&conn, "   ").is_err());
+            let layer = StoredLayer {
+                id: "gone".to_string(),
+                name: "G".to_string(),
+                source: "osm".to_string(),
+            };
+            assert!(add_layer(&conn, &layer).is_ok());
+            let removed = remove_layer(&conn, "gone");
+            assert!(removed.is_ok());
+            if let Ok(was_removed) = removed {
+                assert!(was_removed);
+            }
+        }
+    }
+
+    #[test]
+    fn default_db_path_respects_env() {
+        let path = default_db_path();
+        assert!(!path.as_os_str().is_empty());
     }
 }

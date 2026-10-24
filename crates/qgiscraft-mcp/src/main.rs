@@ -63,12 +63,14 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Geocode search (Phase 0 demo: Vienna; live Photon lands Phase 0.1)
+    /// Geocode search (demo default: Vienna; --live hits Photon, keyless)
     GeocodeSearch {
         #[arg(long)]
         query: String,
         #[arg(long)]
         limit: Option<u8>,
+        #[arg(long)]
+        live: bool,
         #[arg(long)]
         json: bool,
     },
@@ -118,7 +120,7 @@ fn tools_list() -> Value {
             {"name": "layer.add", "description": "Add a layer: id, name required; source, geom_type, crs optional", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "source": {"type": "string"}, "geom_type": {"type": "string"}, "crs": {"type": "string"}}, "required": ["id", "name"]}},
             {"name": "layer.list", "description": "List layers in draw order", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "layer.remove", "description": "Remove a layer by id", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}},
-            {"name": "geocode.search", "description": "Search places: query required, limit 1..50", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}},
+            {"name": "geocode.search", "description": "Search places: query required, limit 1..50, live=false demo else Photon", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "live": {"type": "boolean"}}, "required": ["query"]}},
             {"name": "overpass.query", "description": "Overpass QL query (Phase 0.1 live; now typed unsupported)", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
             {"name": "export.png", "description": "Export map PNG (Phase 1 render path)", "inputSchema": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}}},
         ]
@@ -165,6 +167,7 @@ fn call_tool(name: &str, args: &Value) -> Value {
                 run(Command::GeocodeSearch {
                     query: str_arg(args, "query").unwrap_or_default(),
                     limit,
+                    live: args.get("live").and_then(|v| v.as_bool()).unwrap_or(false),
                 })
             }
         }
@@ -289,8 +292,13 @@ fn main() {
         Commands::LayerRemove { id, json } => {
             show(run(Command::LayerRemove { id }), json, "layer.remove");
         }
-        Commands::GeocodeSearch { query, limit, json } => show(
-            run(Command::GeocodeSearch { query, limit }),
+        Commands::GeocodeSearch {
+            query,
+            limit,
+            live,
+            json,
+        } => show(
+            run(Command::GeocodeSearch { query, limit, live }),
             json,
             "geocode.search",
         ),
