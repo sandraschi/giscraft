@@ -1,5 +1,14 @@
 # Changelog - qgiscraft-mcp
 
+## Unreleased - identify on hover/click, high-contrast dots, POI presets, glossary
+- MCP twin for geoprocessing: new `processing.buffer` tool and `processing-buffer` CLI command (11 tools total); forwarded to live app via control channel with real-time canvas refresh (87 tests green).
+- Hovering the map shows a name+kind+coords tooltip; clicking selects the layer and pins details; empty click deselects (QGIS Identify behavior).
+- Picking lives in core (`point_in_ring`, `dist_to_segment_deg`), topmost-visible-wins, 12px tolerance; covered by unit + app tests.
+- Dots: white halo underlay so they read on busy tiles; per-layer colors already differed (verified in render).
+- Removed the meaningless "Add demo layer" buttons; Layer menu links to real import, dock has "Add OSM data...".
+- OSM download dialog has one-click POI presets (Cafes, Pharmacies, Bike shops, Restaurants, Bars, ATMs, Locksmiths, Bakeries, Supermarkets).
+- New `docs/GLOSSARY.md` (bbox, Overpass, tiles, CRS, ODbL...) linked from README + docs index.
+
 ## 2026-10-24 - Phase 2.5: worked recipe (bike shops) + basemap hardening
 - New `docs/WORKFLOWS.md`: end-to-end "Innere Stadt bike repair shops" recipe (tag choice with `craft=bicycle_repair` zero-hit lesson, 3 integration paths, rendered map `docs/map-bikeshops.png`).
 - Hardened basemap selection: raster layers need a *usable* template (`is_usable_template`: http(s) + {z}/{x}/{y}); legacy `xyz:osm` stubs no longer shadow the default with a broken URL. Seed writes full template.
