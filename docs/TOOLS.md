@@ -1,4 +1,4 @@
-# Tool Reference (10 MCP tools + matching CLI)
+# Tool Reference (11 MCP tools + matching CLI)
 
 `mcp --connect PORT` drives the running app (`qgiscraft-app -- --control PORT`)
 for the DB-touching tools, so there is a single writer. See
@@ -19,11 +19,12 @@ stdio, MCP 2024-11-05, `initialize` / `tools/list` / `tools/call` / `ping`.
 | `geocode.search` | `query` | `limit` 1..50, `live` | Photon demo (Stephansplatz) or live lookup |
 | `overpass.query` | `key`, `value` | `south/west/north/east`, `live`, `ingest`, `db` | Fenced tag builder; dry-run QL by default; `live` executes (cap 100); `ingest` writes hits to DB (requires `live`) |
 | `features.list` | — | `layer_id`, `db` | Ingested point features (cap 500), GeoJSON in `geom_json` |
+| `processing.buffer` | `layer_id` | `distance` (meters, def 200), `segments` (8..256), `output_layer`, `db` | Great-circle buffer point features into circle polygons; persists to DB |
 | `export.png` | — | `width`, `height` | Typed `unsupported` until the render path lands (Phase 1+) |
 
 CLI equivalents: `status`, `project-status`, `layer-add`, `layer-list`, `layer-import`,
 `layer-remove`, `geocode-search [--live]`, `overpass-query [--live] [--ingest] [--db]`,
-`features-list`, plus `mcp` (serve, `--connect` for the live app). Per-command `--db` overrides
+`features-list`, `processing-buffer`, plus `mcp` (serve, `--connect` for the live app). Per-command `--db` overrides
 `$QGISCRAFT_DB`, default `./qgiscraft.db`.
 
 Hostile input (empty ids, injection in tag keys, out-of-range limits/bbox)

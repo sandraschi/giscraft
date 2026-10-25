@@ -13,6 +13,7 @@ DONE:
 - Geocode: demo + Photon live. Overpass: fenced builder + dry-run + live + `--ingest` (full geometry).
 - XYZ tile underlay (cached, progressive), Web Mercator canvas, pull-model BMP preview with fills.
 - Ways/polygons/lines with selected-layer labels; fill pixel-proven (`docs/map-preview.png`).
+- Identify on hover/click: tooltip with name+coords, click selects the layer and pins details; map picks topmost visible feature (points/lines/polygons), empty click deselects.
 - Standard readme stack + plugin strategy (MCP tools are the plugin system) + data ecosystem doc (sources, GTFS et al., where your maps go, walk-and-photo crossconnect).
 - Track B seed: Axum sidecar (11254) + React/Leaflet console (11253, proxied) — same command bus over REST, no new capabilities.
 - Worked recipes in docs/WORKFLOWS.md (bike-repair-shops walkthrough: tag choice, 3 integration paths, rendered map).
