@@ -1342,6 +1342,87 @@ impl QgisCraftApp {
                     Err(e) => serde_json::json!({"error": e.to_string()}),
                 }
             }
+            "processing.buffer" => {
+                let layer_id = str_param("layer_id");
+                let distance_m = params
+                    .get("distance")
+                    .or_else(|| params.get("distance_m"))
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(200.0);
+                if layer_id.trim().is_empty() {
+                    return serde_json::json!({"error": "invalid params: layer_id required"});
+                }
+                if distance_m <= 0.0 || !distance_m.is_finite() || distance_m > 1_000_000.0 {
+                    return serde_json::json!({"error": "invalid params: distance must be 0..1000000 m"});
+                }
+                let segments = params
+                    .get("segments")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|n| usize::try_from(n).ok())
+                    .unwrap_or(24);
+                let output_layer = opt_str("output_layer");
+                let conn = match store::open_default() {
+                    Ok(c) => c,
+                    Err(e) => return serde_json::json!({"error": e.to_string()}),
+                };
+                let feats = match store::list_features(&conn, Some(layer_id.as_str())) {
+                    Ok(f) => f,
+                    Err(e) => return serde_json::json!({"error": e.to_string()}),
+                };
+                if feats.is_empty() {
+                    return serde_json::json!({"error": format!("layer not found or empty: {layer_id}")});
+                }
+                let raw: Vec<qgiscraft_core::import::RawFeature> = feats
+                    .into_iter()
+                    .map(|f| qgiscraft_core::import::RawFeature {
+                        name: f.name,
+                        kind: f.kind,
+                        lng: f.lng,
+                        lat: f.lat,
+                        geom_json: f.geom_json,
+                    })
+                    .collect();
+                let buffered =
+                    match qgiscraft_core::processing::buffer_features(&raw, distance_m, segments) {
+                        Ok(b) => b,
+                        Err(e) => return serde_json::json!({"error": e.to_string()}),
+                    };
+                let out_id = output_layer.unwrap_or_else(|| format!("{layer_id}-buffer"));
+                let out_name = format!("{layer_id} buffer ({distance_m}m)");
+                let new_layer = store::StoredLayer::new(
+                    out_id.clone(),
+                    out_name,
+                    Some("processing:buffer".to_string()),
+                    Some("polygon".to_string()),
+                    None,
+                );
+                if let Err(e) = store::add_layer(&conn, &new_layer) {
+                    return serde_json::json!({"error": e.to_string()});
+                }
+                let stored_feats: Vec<store::StoredFeature> = buffered
+                    .into_iter()
+                    .map(|f| store::StoredFeature {
+                        layer_id: out_id.clone(),
+                        name: f.name,
+                        kind: f.kind,
+                        lng: f.lng,
+                        lat: f.lat,
+                        geom_json: f.geom_json,
+                    })
+                    .collect();
+                match store::replace_features(&conn, &out_id, &stored_feats) {
+                    Ok(n) => {
+                        self.refresh();
+                        serde_json::json!({
+                            "input_layer": layer_id,
+                            "output_layer": out_id,
+                            "distance_m": distance_m,
+                            "buffered": n,
+                        })
+                    }
+                    Err(e) => serde_json::json!({"error": e.to_string()}),
+                }
+            }
             _ => serde_json::json!({"error": format!("unknown method: {method}")}),
         }
     }

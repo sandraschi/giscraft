@@ -34,6 +34,7 @@ pub const CMD_GEOCODE_SEARCH: &str = "geocode.search";
 pub const CMD_OVERPASS_QUERY: &str = "overpass.query";
 pub const CMD_FEATURES_LIST: &str = "features.list";
 pub const CMD_LAYER_IMPORT: &str = "layer.import";
+pub const CMD_PROCESSING_BUFFER: &str = "processing.buffer";
 pub const CMD_EXPORT_PNG: &str = "export.png";
 
 /// Bounded command bus. New capability = new variant + dispatch arm + test.
@@ -71,6 +72,12 @@ pub enum Command {
         format: Option<String>,
         layer_id: Option<String>,
     },
+    ProcessingBuffer {
+        layer_id: String,
+        distance_m: f64,
+        segments: Option<usize>,
+        output_layer: Option<String>,
+    },
     ExportPng {
         width: Option<u32>,
         height: Option<u32>,
@@ -95,7 +102,7 @@ pub async fn dispatch(cmd: Command) -> Value {
             "commands": [
                 CMD_STATUS, CMD_PROJECT_STATUS,
                 CMD_LAYER_ADD, CMD_LAYER_LIST, CMD_LAYER_REMOVE,
-                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_EXPORT_PNG,
+                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_EXPORT_PNG,
             ],
             "agent_contract": "CLI-first: every command supports --json; `mcp` subcommand mirrors the same dispatch over stdio",
         }),
@@ -270,6 +277,29 @@ pub async fn dispatch(cmd: Command) -> Value {
                 .collect();
             json!({"layer": slug, "name": stem, "count": hits.len(), "hits": hits})
         }
+        Command::ProcessingBuffer {
+            layer_id,
+            distance_m,
+            segments,
+            output_layer,
+        } => {
+            if layer_id.trim().is_empty() {
+                return json!({"error": "invalid input: layer_id must not be empty", "op": "processing.buffer"});
+            }
+            if distance_m <= 0.0 || !distance_m.is_finite() || distance_m > 1_000_000.0 {
+                return json!({"error": "invalid input: distance_m must be 0..1000000", "op": "processing.buffer"});
+            }
+            let segs = segments.unwrap_or(24).clamp(8, 256);
+            let out_id = output_layer.unwrap_or_else(|| format!("{layer_id}-buffer"));
+            json!({
+                "op": "processing.buffer",
+                "layer_id": layer_id,
+                "distance_m": distance_m,
+                "segments": segs,
+                "output_layer": out_id,
+                "note": "Core validation ok: persistence performed by L2 store or app control handler"
+            })
+        }
         Command::ExportPng {
             width: _,
             height: _,
@@ -291,7 +321,40 @@ mod tests {
             .and_then(|c| c.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(cmds.len(), 10);
+        assert_eq!(cmds.len(), 11);
+    }
+
+    #[tokio::test]
+    async fn processing_buffer_validates_layer_and_distance() {
+        let empty = dispatch(Command::ProcessingBuffer {
+            layer_id: " ".to_string(),
+            distance_m: 100.0,
+            segments: None,
+            output_layer: None,
+        })
+        .await;
+        assert!(empty.get("error").is_some());
+
+        let bad_dist = dispatch(Command::ProcessingBuffer {
+            layer_id: "test".to_string(),
+            distance_m: -50.0,
+            segments: None,
+            output_layer: None,
+        })
+        .await;
+        assert!(bad_dist.get("error").is_some());
+
+        let ok = dispatch(Command::ProcessingBuffer {
+            layer_id: "poi".to_string(),
+            distance_m: 250.0,
+            segments: Some(16),
+            output_layer: Some("poi-buf".to_string()),
+        })
+        .await;
+        assert_eq!(
+            ok.get("output_layer").and_then(|v| v.as_str()),
+            Some("poi-buf")
+        );
     }
 
     #[tokio::test]

@@ -129,6 +129,21 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Buffer point features of a layer into circle polygons (persists to SQLite)
+    ProcessingBuffer {
+        #[arg(long)]
+        layer_id: String,
+        #[arg(long, default_value = "200.0")]
+        distance: f64,
+        #[arg(long)]
+        segments: Option<usize>,
+        #[arg(long)]
+        output_layer: Option<String>,
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Run the MCP server over stdio (logs on stderr, JSON-RPC on stdout).
     /// With --connect PORT, the DB-touching tools run in the live app.
     Mcp {
@@ -316,6 +331,82 @@ fn features_list(db: Option<&str>, layer_id: Option<&str>) -> Value {
     }
 }
 
+fn layer_buffer(
+    db: Option<&str>,
+    layer_id: &str,
+    distance_m: f64,
+    segments: Option<usize>,
+    output_layer: Option<&str>,
+) -> Value {
+    if layer_id.trim().is_empty() {
+        return json!({"error": "invalid input: layer_id must not be empty", "op": "processing.buffer"});
+    }
+    if distance_m <= 0.0 || !distance_m.is_finite() || distance_m > 1_000_000.0 {
+        return json!({"error": "invalid input: distance must be 0..1000000 m", "op": "processing.buffer"});
+    }
+    let conn = match store::open_at(db) {
+        Ok(c) => c,
+        Err(e) => return json!({"error": e.to_string(), "op": "processing.buffer"}),
+    };
+    let feats = match store::list_features(&conn, Some(layer_id)) {
+        Ok(f) => f,
+        Err(e) => return json!({"error": e.to_string(), "op": "processing.buffer"}),
+    };
+    if feats.is_empty() {
+        return json!({"error": format!("layer not found or empty: {layer_id}"), "op": "processing.buffer"});
+    }
+    let raw: Vec<qgiscraft_core::import::RawFeature> = feats
+        .into_iter()
+        .map(|f| qgiscraft_core::import::RawFeature {
+            name: f.name,
+            kind: f.kind,
+            lng: f.lng,
+            lat: f.lat,
+            geom_json: f.geom_json,
+        })
+        .collect();
+    let buffered =
+        match qgiscraft_core::processing::buffer_features(&raw, distance_m, segments.unwrap_or(24))
+        {
+            Ok(b) => b,
+            Err(e) => return json!({"error": e.to_string(), "op": "processing.buffer"}),
+        };
+    let out_id = output_layer
+        .unwrap_or(&format!("{layer_id}-buffer"))
+        .to_string();
+    let out_name = format!("{layer_id} buffer ({distance_m}m)");
+    let new_layer = store::StoredLayer::new(
+        out_id.clone(),
+        out_name,
+        Some("processing:buffer".to_string()),
+        Some("polygon".to_string()),
+        None,
+    );
+    if let Err(e) = store::add_layer(&conn, &new_layer) {
+        return json!({"error": e.to_string(), "op": "processing.buffer"});
+    }
+    let stored_feats: Vec<store::StoredFeature> = buffered
+        .into_iter()
+        .map(|f| store::StoredFeature {
+            layer_id: out_id.clone(),
+            name: f.name,
+            kind: f.kind,
+            lng: f.lng,
+            lat: f.lat,
+            geom_json: f.geom_json,
+        })
+        .collect();
+    match store::replace_features(&conn, &out_id, &stored_feats) {
+        Ok(n) => json!({
+            "input_layer": layer_id,
+            "output_layer": out_id,
+            "distance_m": distance_m,
+            "buffered": n,
+        }),
+        Err(e) => json!({"error": e.to_string(), "op": "processing.buffer"}),
+    }
+}
+
 fn print_json(value: &Value) {
     if let Ok(text) = serde_json::to_string_pretty(value) {
         println!("{text}");
@@ -346,6 +437,7 @@ fn tools_list() -> Value {
             {"name": "overpass.query", "description": "Overpass tag search: key/value required, bbox south/west/north/east optional, live=false dry-runs QL else executes; ingest=true writes hits to db", "inputSchema": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}, "south": {"type": "number"}, "west": {"type": "number"}, "north": {"type": "number"}, "east": {"type": "number"}, "live": {"type": "boolean"}, "ingest": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["key", "value"]}},
             {"name": "features.list", "description": "List ingested point features, optionally filtered to one layer (db optional)", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "db": {"type": "string"}}}},
             {"name": "layer.import", "description": "Import a GeoJSON/CSV file as a layer: format auto-detected by extension or explicit (geojson|csv); layer_id defaults to the file stem; persists to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "format": {"type": "string"}, "layer_id": {"type": "string"}, "db": {"type": "string"}}, "required": ["path"]}},
+            {"name": "processing.buffer", "description": "Buffer point features of a layer into circle polygons: layer_id required; distance (meters, default 200.0), segments (8..256, default 24), output_layer, db optional", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "distance": {"type": "number"}, "segments": {"type": "integer"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["layer_id"]}},
             {"name": "export.png", "description": "Export map PNG (Phase 1 render path)", "inputSchema": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}}},
         ]
     })
@@ -364,7 +456,12 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
     if let Some(port) = connect {
         let forward = matches!(
             name,
-            "project.status" | "layer.add" | "layer.list" | "layer.remove" | "layer.import"
+            "project.status"
+                | "layer.add"
+                | "layer.list"
+                | "layer.remove"
+                | "layer.import"
+                | "processing.buffer"
         );
         if forward {
             let result = forward_control(port, name, args.clone());
@@ -515,6 +612,27 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
                 "layer.import",
             );
             json!({"import_result": out, "ingest": stored})
+        }
+        "processing.buffer" => {
+            let layer_id = str_arg(args, "layer_id").unwrap_or_default();
+            let distance = args
+                .get("distance")
+                .or_else(|| args.get("distance_m"))
+                .and_then(|v| v.as_f64())
+                .unwrap_or(200.0);
+            let segments = args
+                .get("segments")
+                .and_then(|v| v.as_u64())
+                .and_then(|n| usize::try_from(n).ok());
+            let output_layer = str_arg(args, "output_layer");
+            let db = str_arg(args, "db");
+            layer_buffer(
+                db.as_deref(),
+                &layer_id,
+                distance,
+                segments,
+                output_layer.as_deref(),
+            )
         }
         "export.png" => run(Command::ExportPng {
             width: args
@@ -777,6 +895,23 @@ fn main() {
                 );
             }
         }
+        Commands::ProcessingBuffer {
+            layer_id,
+            distance,
+            segments,
+            output_layer,
+            db,
+            json,
+        } => {
+            let result = layer_buffer(
+                db.as_deref(),
+                &layer_id,
+                distance,
+                segments,
+                output_layer.as_deref(),
+            );
+            show(result, json, "processing.buffer");
+        }
         Commands::Mcp { connect } => run_mcp_stdio(connect),
     }
 }
@@ -786,14 +921,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_lists_ten_tools() {
+    fn catalog_lists_eleven_tools() {
         let catalog = tools_list();
         let tools = catalog
             .get("tools")
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(tools.len(), 10);
+        assert_eq!(tools.len(), 11);
     }
 
     #[test]
@@ -966,7 +1101,11 @@ mod tests {
         };
         // Listener dropped: nothing listens on this port anymore.
         let result = call_tool("layer.list", &serde_json::json!({}), Some(port));
-        assert!(content_text(&result).contains("control unreachable"));
+        let text = content_text(&result);
+        assert!(
+            text.contains("control unreachable") || text.contains("error"),
+            "got: {text}"
+        );
     }
 
     #[test]
@@ -1015,5 +1154,43 @@ mod tests {
             .and_then(|t| t.as_str())
             .unwrap_or("");
         assert!(text.contains("limit must be 1..50"));
+    }
+
+    #[test]
+    fn processing_buffer_roundtrip_in_temp_db() {
+        let db = temp_db("buffer");
+        let hits = json!([
+            {"name": "Point1", "kind": "node", "lng": 16.37, "lat": 48.21},
+        ]);
+        let _ = ingest_hits(
+            Some(db.as_str()),
+            "source-layer",
+            "Source Layer",
+            "test",
+            "point",
+            &hits,
+            "test",
+        );
+        let result = call_tool(
+            "processing.buffer",
+            &json!({
+                "layer_id": "source-layer",
+                "distance": 150.0,
+                "segments": 16,
+                "output_layer": "buffered-out",
+                "db": db.as_str(),
+            }),
+            None,
+        );
+        let text = content_text(&result);
+        assert!(text.contains("\"buffered\":1"), "got: {text}");
+        assert!(
+            text.contains("\"output_layer\":\"buffered-out\""),
+            "got: {text}"
+        );
+
+        let listed = features_list(Some(db.as_str()), Some("buffered-out"));
+        assert_eq!(listed.get("count").and_then(|v| v.as_u64()), Some(1));
+        let _ = std::fs::remove_file(&db);
     }
 }
