@@ -22,4 +22,8 @@ box-zoom, `commands --json`, kittest goldens never existed).
 - [x] command geocode.search present (Locator parity)
 - [x] command overpass.query present (QuickOSM parity)
 - [x] command features.list present (read back ingested hits)
+- [x] command layer.import present (GeoJSON/CSV file -> layer parity)
+- [x] command processing.buffer present (geoprocessing twin parity)
+- [x] command map.forge present (mapforge depot parity: spec -> QL plan -> ingest)
+- [x] forge depot: `depot/maps/*/spec.json` (pharmacies + bikeshops), checked by `cargo run -p xtask -- forge`
 - [x] command export.png present (typed unsupported, render path Phase 1+)

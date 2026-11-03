@@ -1,5 +1,12 @@
 # Changelog - qgiscraft-mcp
 
+## Unreleased - mapforge MVP (spec -> QL plan -> ingest, depot + forge gate)
+- New `map.forge` tool + `forge-from-spec` CLI (12 tools total): MapSpec JSON (title/slug/bbox/1..8 layers) validates offline, dry-run returns deterministic Overpass QL per layer, `--live` executes (cap 100/layer), `--ingest` persists each layer to SQLite. Single content envelope over MCP (no double-wrap), hostile inputs are typed errors.
+- New `crates/qgiscraft-core/src/mapforge.rs`: `parse_spec` + `compile_plan` (slug charset, 120-char titles, Bbox fence, duplicate ids, injection via `build_tag_query`), 3 unit tests.
+- Depot: `depot/maps/innere-stadt-pharmacies/spec.json` + `depot/maps/innere-stadt-bikeshops/spec.json` (29-hit WORKFLOWS pair), verified by CLI dry-run + stdio probe.
+- `xtask forge`: depot presence gate (required keys per spec), wired into `ci`; `parity` now covers 10 commands (added `features.list`, `layer.import`, `processing.buffer`, `map.forge`).
+- Gates: 94 tests green (55 core + 16 mcp + 13 app + 8 store + 2 web), clippy -D warnings, fmt clean.
+
 ## Unreleased - doppler SPEC + hygiene (bak cleanup, gitignore both patterns)
 - New `docs/SPEC-doppler-locate.md`: offline-first `doppler.locate` design (curves + tracks layer -> scored layer, no audio/FFT in core, no live ADS-B in v1, colsto 920s-pair method with sound-travel + terrain note).
 - Hygiene: removed 4 stale `*.bak` from 2026-10-25 batch (app/main, core/lib, mcp/main, docs/TOOLS); `.gitignore` now covers both `*.bak` and `*.bak.*` per fleet gate.

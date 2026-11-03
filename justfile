@@ -26,6 +26,9 @@ ci:
 parity:
     $env:Path = "$env:USERPROFILE\\.cargo\\bin;$env:Path"; cargo run -p xtask -- parity
 
+forge:
+    $env:Path = "$env:USERPROFILE\\.cargo\\bin;$env:Path"; cargo run -p xtask -- forge
+
 layers:
     $env:Path = "$env:USERPROFILE\\.cargo\\bin;$env:Path"; cargo run -p xtask -- layers
 

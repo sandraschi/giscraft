@@ -40,12 +40,16 @@ fn ci() -> i32 {
             return code;
         }
     }
-    // layers + parity are part of ci (fast, no I/O).
+    // layers + parity + forge are part of ci (fast, no I/O).
     let code = layers();
     if code != 0 {
         return code;
     }
-    parity()
+    let code = parity();
+    if code != 0 {
+        return code;
+    }
+    forge()
 }
 
 fn layers() -> i32 {
@@ -91,6 +95,10 @@ fn parity() -> i32 {
         "layer.remove",
         "geocode.search",
         "overpass.query",
+        "features.list",
+        "layer.import",
+        "processing.buffer",
+        "map.forge",
         "export.png",
     ] {
         if !lib.contains(cmd) {
@@ -103,11 +111,51 @@ fn parity() -> i32 {
         }
     }
     if missing == 0 {
-        println!("xtask parity: ok (6 commands present)");
+        println!("xtask parity: ok (10 commands present)");
         0
     } else {
         1
     }
+}
+
+fn forge() -> i32 {
+    // Depot gate: every depot/maps/*/spec.json exists with required keys.
+    // Full schema validation lives in core unit tests + CLI dry-run.
+    let depot = match std::fs::read_dir("depot/maps") {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("xtask forge: cannot read depot/maps: {e}");
+            return 1;
+        }
+    };
+    let mut specs = 0;
+    for entry in depot {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let spec = entry.path().join("spec.json");
+        let text = match std::fs::read_to_string(&spec) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let mut ok = true;
+        for key in ["title", "slug", "bbox", "layers", "key", "value"] {
+            if !text.contains(&format!("\"{key}\"")) {
+                eprintln!("xtask forge: {} missing key {key}", spec.to_string_lossy());
+                ok = false;
+            }
+        }
+        if ok {
+            specs += 1;
+        }
+    }
+    if specs == 0 {
+        eprintln!("xtask forge: no valid specs in depot/maps");
+        return 1;
+    }
+    println!("xtask forge: ok ({specs} specs)");
+    0
 }
 
 fn main() {
@@ -117,8 +165,9 @@ fn main() {
         "ci" => ci(),
         "layers" => layers(),
         "parity" => parity(),
+        "forge" => forge(),
         _ => {
-            eprintln!("usage: xtask <ci|layers|parity>");
+            eprintln!("usage: xtask <ci|layers|parity|forge>");
             2
         }
     };
