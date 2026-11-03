@@ -1,4 +1,4 @@
-# Tool Reference (12 MCP tools + matching CLI)
+# Tool Reference (13 MCP tools + matching CLI)
 
 `mcp --connect PORT` drives the running app (`qgiscraft-app -- --control PORT`)
 for the DB-touching tools, so there is a single writer. See
@@ -21,11 +21,12 @@ stdio, MCP 2024-11-05, `initialize` / `tools/list` / `tools/call` / `ping`.
 | `features.list` | — | `layer_id`, `db` | Ingested point features (cap 500), GeoJSON in `geom_json` |
 | `processing.buffer` | `layer_id` | `distance` (meters, def 200), `segments` (8..256), `output_layer`, `db` | Great-circle buffer point features into circle polygons; persists to DB |
 | `map.forge` | `path` | `live`, `ingest`, `db` | MapSpec JSON file -> offline QL plan per layer; `live` executes (cap 100/layer); `ingest` writes live hits to DB (requires `live`) |
+| `wkt.show` | `wkt` | `layer_id`, `db` | WKT string (POINT/LINESTRING/POLYGON + MULTI, 2D only) as a layer; persists to DB |
 | `export.png` | — | `width`, `height` | Typed `unsupported` until the render path lands (Phase 1+) |
 
 CLI equivalents: `status`, `project-status`, `layer-add`, `layer-list`, `layer-import`,
 `layer-remove`, `geocode-search [--live]`, `overpass-query [--live] [--ingest] [--db]`,
-`features-list`, `processing-buffer`, `forge-from-spec`, plus `mcp` (serve, `--connect` for the live app). Per-command `--db` overrides
+`features-list`, `processing-buffer`, `forge-from-spec --path SPEC [--live] [--ingest] [--db]`, `wkt-show --wkt GEOM [--layer-id] [--db]`, plus `mcp` (serve, `--connect` for the live app). Per-command `--db` overrides
 `$QGISCRAFT_DB`, default `./qgiscraft.db`. Forge depot `depot/maps/*/spec.json` checked by `cargo run -p xtask -- forge`.
 
 Hostile input (empty ids, injection in tag keys, out-of-range limits/bbox)

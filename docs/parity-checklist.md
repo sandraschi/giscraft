@@ -4,7 +4,7 @@ Checked = present in the tree as committed. Unchecked = genuinely absent.
 Updated 2026-10-24 post-0.6; corrected the v0.1 overclaims (toolbars,
 box-zoom, `commands --json`, kittest goldens never existed).
 
-- [x] Menu bar: Project/Edit/View/Layer/Settings/Plugins/Vector/Raster/Database/Web/Processing/Help (items stubbed, Phase 1)
+- [x] Menus: Edit holds a typed placeholder ("lands with later phases"); Plugins is real (Show WKT + Zoom to coordinates dialogs)
 - [ ] Toolbars: File/Manage Layers/Digitizing/Attributes/Map Navigation (not built; menu bar only)
 - [x] Panels: Browser/Layers/Styling/Processing Toolbox/Log (Identify Results panel not built)
 - [x] Status bar: project file/CRS/live scale/coords-ish/render state (CRS selector not built)
@@ -25,5 +25,7 @@ box-zoom, `commands --json`, kittest goldens never existed).
 - [x] command layer.import present (GeoJSON/CSV file -> layer parity)
 - [x] command processing.buffer present (geoprocessing twin parity)
 - [x] command map.forge present (mapforge depot parity: spec -> QL plan -> ingest)
+- [x] command wkt.show present (QuickWKT parity: paste WKT -> layer + fit)
+- [x] Plugins menu: Show WKT + Zoom to coordinates dialogs (first real plugin capabilities)
 - [x] forge depot: `depot/maps/*/spec.json` (pharmacies + bikeshops), checked by `cargo run -p xtask -- forge`
 - [x] command export.png present (typed unsupported, render path Phase 1+)

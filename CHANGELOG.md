@@ -1,5 +1,11 @@
 # Changelog - qgiscraft
 
+## Unreleased - plugins go real: wkt.show + zoom-to-coords (QuickWKT/LatLon Tools)
+- New `wkt.show` tool + `wkt-show` CLI (13 tools total): hand-rolled 2D WKT reader (POINT/LINESTRING/POLYGON + MULTI, SRID prefix tolerated, auto-closed rings, EMPTY -> zero features), persists via `ingest_hits` with shared geom-type sniff. Plugins menu: real "Show WKT..." + "Zoom to coordinates..." dialogs (lat,lng + N/S/E/W suffixes via `geo::parse_latlng`).
+- Filed `docs/gaps.md` plugin backlog (capability, not code): Now (QuickWKT done, coords done, grid, NNJoin, geodesic), Next (QMS presets, xlsx, ImportPhotos, MBTiles), Later (profile/SRTM, Whitebox sidecar), Never (API-keyed, Mergin, PyQGIS).
+- Gates: core 64 + mcp 18 green (parse/coord hostile tests, dispatch + persist tests), fmt clean; full workspace clippy/test re-run pending app restart (running exe locks the linker).
+
+
 ## Unreleased - repo rename qgiscraft-mcp -> qgiscraft (craft convention)
 - GitHub `sandraschi/qgiscraft-mcp` renamed to `sandraschi/qgiscraft` (old URL redirects); local checkout moves to `D:\Dev\repos\qgiscraft`. Crate/binary names unchanged (`qgiscraft-mcp` L2 CLI/MCP, `qgiscraft-app`, `qgiscraft-web`): only the repo container, clone URLs, titles, and `glama.json` were renamed, like `gamecraft` (repo) vs `gamecraft-mcp` (crate).
 - Gates re-verified after rename: clippy -D warnings, tests green, fmt clean.
