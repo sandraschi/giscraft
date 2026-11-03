@@ -1,5 +1,10 @@
 # Changelog - qgiscraft-mcp
 
+## Unreleased - doppler SPEC + hygiene (bak cleanup, gitignore both patterns)
+- New `docs/SPEC-doppler-locate.md`: offline-first `doppler.locate` design (curves + tracks layer -> scored layer, no audio/FFT in core, no live ADS-B in v1, colsto 920s-pair method with sound-travel + terrain note).
+- Hygiene: removed 4 stale `*.bak` from 2026-10-25 batch (app/main, core/lib, mcp/main, docs/TOOLS); `.gitignore` now covers both `*.bak` and `*.bak.*` per fleet gate.
+- Gates: 87 tests green, clippy -D warnings, fmt clean.
+
 ## Unreleased - identify on hover/click, high-contrast dots, POI presets, glossary
 - MCP twin for geoprocessing: new `processing.buffer` tool and `processing-buffer` CLI command (11 tools total); forwarded to live app via control channel with real-time canvas refresh (87 tests green).
 - Hovering the map shows a name+kind+coords tooltip; clicking selects the layer and pins details; empty click deselects (QGIS Identify behavior).

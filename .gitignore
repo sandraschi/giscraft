@@ -1,6 +1,7 @@
 /target
 /dist/
 *.bak
+*.bak.*
 *.cache
 *.db
 *.exe
