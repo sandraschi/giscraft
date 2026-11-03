@@ -39,6 +39,8 @@ pub const CMD_LAYER_IMPORT: &str = "layer.import";
 pub const CMD_PROCESSING_BUFFER: &str = "processing.buffer";
 pub const CMD_MAP_FORGE: &str = "map.forge";
 pub const CMD_WKT_SHOW: &str = "wkt.show";
+pub const CMD_PROCESSING_GRID: &str = "processing.grid";
+pub const CMD_PROCESSING_NEAREST: &str = "processing.nearest";
 pub const CMD_EXPORT_PNG: &str = "export.png";
 
 /// Bounded command bus. New capability = new variant + dispatch arm + test.
@@ -90,6 +92,20 @@ pub enum Command {
         wkt: String,
         layer_id: Option<String>,
     },
+    ProcessingGrid {
+        south: Option<f64>,
+        west: Option<f64>,
+        north: Option<f64>,
+        east: Option<f64>,
+        cell_size_m: Option<f64>,
+        hex: bool,
+        output_layer: Option<String>,
+    },
+    ProcessingNearest {
+        source_layer: String,
+        target_layer: String,
+        output_layer: Option<String>,
+    },
     ExportPng {
         width: Option<u32>,
         height: Option<u32>,
@@ -114,7 +130,7 @@ pub async fn dispatch(cmd: Command) -> Value {
             "commands": [
                 CMD_STATUS, CMD_PROJECT_STATUS,
                 CMD_LAYER_ADD, CMD_LAYER_LIST, CMD_LAYER_REMOVE,
-                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_MAP_FORGE, CMD_WKT_SHOW, CMD_EXPORT_PNG,
+                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_MAP_FORGE, CMD_WKT_SHOW, CMD_PROCESSING_GRID, CMD_PROCESSING_NEAREST, CMD_EXPORT_PNG,
             ],
             "agent_contract": "CLI-first: every command supports --json; `mcp` subcommand mirrors the same dispatch over stdio",
         }),
@@ -402,6 +418,72 @@ pub async fn dispatch(cmd: Command) -> Value {
                 "hits": hits,
             })
         }
+        Command::ProcessingGrid {
+            south,
+            west,
+            north,
+            east,
+            cell_size_m,
+            hex,
+            output_layer,
+        } => {
+            let (s, w, n, e) = match (south, west, north, east) {
+                (Some(s), Some(w), Some(n), Some(e)) => (s, w, n, e),
+                _ => {
+                    return json!({"error": "invalid input: grid needs south/west/north/east", "op": "processing.grid"});
+                }
+            };
+            let feats =
+                match processing::grid_features(s, w, n, e, cell_size_m.unwrap_or(500.0), hex) {
+                    Ok(f) => f,
+                    Err(e) => return json!({"error": e.to_string(), "op": "processing.grid"}),
+                };
+            let out_id = match output_layer {
+                Some(id) if !id.trim().is_empty() => id.trim().to_string(),
+                _ => {
+                    if hex {
+                        "grid-hex".to_string()
+                    } else {
+                        "grid".to_string()
+                    }
+                }
+            };
+            let hits: Vec<Value> = feats
+                .iter()
+                .map(|f| {
+                    let geom: Value = serde_json::from_str(f.geom_json.as_deref().unwrap_or("null"))
+                        .unwrap_or(Value::Null);
+                    json!({"name": f.name, "kind": f.kind, "lng": f.lng, "lat": f.lat, "geom": geom})
+                })
+                .collect();
+            json!({
+                "op": "processing.grid",
+                "layer": out_id,
+                "name": out_id,
+                "count": hits.len(),
+                "hits": hits,
+            })
+        }
+        Command::ProcessingNearest {
+            source_layer,
+            target_layer,
+            output_layer,
+        } => {
+            if source_layer.trim().is_empty() || target_layer.trim().is_empty() {
+                return json!({"error": "invalid input: source_layer and target_layer must not be empty", "op": "processing.nearest"});
+            }
+            let out_id = match output_layer {
+                Some(id) if !id.trim().is_empty() => id.trim().to_string(),
+                _ => format!("{source_layer}-nearest"),
+            };
+            json!({
+                "op": "processing.nearest",
+                "source_layer": source_layer,
+                "target_layer": target_layer,
+                "output_layer": out_id,
+                "note": "Core validation ok: persistence performed by L2 store or app control handler"
+            })
+        }
         Command::ExportPng {
             width: _,
             height: _,
@@ -423,7 +505,7 @@ mod tests {
             .and_then(|c| c.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(cmds.len(), 13);
+        assert_eq!(cmds.len(), 15);
     }
 
     #[tokio::test]
@@ -570,6 +652,54 @@ mod tests {
         let empty = dispatch(Command::WktShow {
             wkt: "   ".to_string(),
             layer_id: None,
+        })
+        .await;
+        assert!(empty.get("error").is_some());
+    }
+
+    #[tokio::test]
+    async fn processing_grid_computes_offline() {
+        let v = dispatch(Command::ProcessingGrid {
+            south: Some(48.20),
+            west: Some(16.36),
+            north: Some(48.21),
+            east: Some(16.37),
+            cell_size_m: Some(500.0),
+            hex: false,
+            output_layer: None,
+        })
+        .await;
+        assert_eq!(v.get("count").and_then(|n| n.as_u64()), Some(6));
+        assert_eq!(v.get("layer").and_then(|s| s.as_str()), Some("grid"));
+        let missing = dispatch(Command::ProcessingGrid {
+            south: None,
+            west: None,
+            north: None,
+            east: None,
+            cell_size_m: None,
+            hex: true,
+            output_layer: None,
+        })
+        .await;
+        assert!(missing.get("error").is_some());
+    }
+
+    #[tokio::test]
+    async fn processing_nearest_validates_layers() {
+        let v = dispatch(Command::ProcessingNearest {
+            source_layer: "bikes".to_string(),
+            target_layer: "pharms".to_string(),
+            output_layer: None,
+        })
+        .await;
+        assert_eq!(
+            v.get("output_layer").and_then(|s| s.as_str()),
+            Some("bikes-nearest")
+        );
+        let empty = dispatch(Command::ProcessingNearest {
+            source_layer: " ".to_string(),
+            target_layer: "pharms".to_string(),
+            output_layer: None,
         })
         .await;
         assert!(empty.get("error").is_some());
