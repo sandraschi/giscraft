@@ -1,5 +1,10 @@
 # Changelog - qgiscraft
 
+## Unreleased - processing.grid + processing.nearest (grid hexagons, NNJoin hub lines)
+- New `processing.grid` tool + CLI (15 tools total): rect/hex grids over a bbox (10k cell cap, geodesic hex vertices via `destination_point`, auto-closed rings), persists polygons; dry-run is the compute (no live needed). New `processing.nearest` tool + CLI: hub LineStrings from each source feature to its closest target (haversine, 1M pair cap, "A -> B (312 m)" names), persists lines. Backed by pure `processing::grid_features` / `nearest_join` + dispatch validation; L2/app own persistence.
+- Toolbox: "Create grid" (prefills canvas bbox, hex checkbox) + "Nearest neighbor join" (source prefilled from selection) dialogs; both persist + auto-fit + log like the other algorithms.
+- Gates: core 70 + mcp 22 green, fmt clean, xtask parity 13 + forge green, MCP stdio probe (wkt.show earlier; grid/nearest via CLI live runs). Full workspace link blocked again by the running app exe — close/reopen to pick up the new build.
+
 ## Unreleased - plugins go real: wkt.show + zoom-to-coords (QuickWKT/LatLon Tools)
 - New `wkt.show` tool + `wkt-show` CLI (13 tools total): hand-rolled 2D WKT reader (POINT/LINESTRING/POLYGON + MULTI, SRID prefix tolerated, auto-closed rings, EMPTY -> zero features), persists via `ingest_hits` with shared geom-type sniff. Plugins menu: real "Show WKT..." + "Zoom to coordinates..." dialogs (lat,lng + N/S/E/W suffixes via `geo::parse_latlng`).
 - Filed `docs/gaps.md` plugin backlog (capability, not code): Now (QuickWKT done, coords done, grid, NNJoin, geodesic), Next (QMS presets, xlsx, ImportPhotos, MBTiles), Later (profile/SRTM, Whitebox sidecar), Never (API-keyed, Mergin, PyQGIS).

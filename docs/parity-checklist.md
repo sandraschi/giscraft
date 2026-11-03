@@ -26,6 +26,9 @@ box-zoom, `commands --json`, kittest goldens never existed).
 - [x] command processing.buffer present (geoprocessing twin parity)
 - [x] command map.forge present (mapforge depot parity: spec -> QL plan -> ingest)
 - [x] command wkt.show present (QuickWKT parity: paste WKT -> layer + fit)
+- [x] command processing.grid present (Create grid parity: rect/hex over bbox)
+- [x] command processing.nearest present (NNJoin parity: hub lines to closest)
+- [x] Processing Toolbox: Download, Geocode, Buffer, Create grid, Nearest join (search filters, each opens its dialog)
 - [x] Plugins menu: Show WKT + Zoom to coordinates dialogs (first real plugin capabilities)
 - [x] forge depot: `depot/maps/*/spec.json` (pharmacies + bikeshops), checked by `cargo run -p xtask -- forge`
 - [x] command export.png present (typed unsupported, render path Phase 1+)

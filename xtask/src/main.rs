@@ -100,6 +100,8 @@ fn parity() -> i32 {
         "processing.buffer",
         "map.forge",
         "wkt.show",
+        "processing.grid",
+        "processing.nearest",
         "export.png",
     ] {
         if !lib.contains(cmd) {
@@ -112,7 +114,7 @@ fn parity() -> i32 {
         }
     }
     if missing == 0 {
-        println!("xtask parity: ok (11 commands present)");
+        println!("xtask parity: ok (13 commands present)");
         0
     } else {
         1
