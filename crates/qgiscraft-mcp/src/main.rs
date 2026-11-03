@@ -157,6 +157,17 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Show WKT geometry as a layer (persists to db)
+    WktShow {
+        #[arg(long)]
+        wkt: String,
+        #[arg(long)]
+        layer_id: Option<String>,
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Run the MCP server over stdio (logs on stderr, JSON-RPC on stdout).
     /// With --connect PORT, the DB-touching tools run in the live app.
     Mcp {
@@ -263,6 +274,32 @@ fn layer_remove(db: Option<&str>, id: &str) -> Value {
         Ok(removed) => json!({"id": id, "removed": removed}),
         Err(e) => json!({"error": e.to_string(), "op": "layer.remove"}),
     }
+}
+
+/// Sniff the layer geometry type from ingested hits: any Polygon wins,
+/// else any LineString, else points. Shared by layer.import and wkt.show.
+fn infer_geom_type(hits: &Value) -> &'static str {
+    hits.as_array()
+        .map(|arr| {
+            let mut kind = "point";
+            for h in arr {
+                if let Some(t) = h
+                    .get("geom")
+                    .and_then(|g| g.get("type"))
+                    .and_then(|t| t.as_str())
+                {
+                    if t == "Polygon" {
+                        kind = "polygon";
+                        break;
+                    }
+                    if t == "LineString" {
+                        kind = "line";
+                    }
+                }
+            }
+            kind
+        })
+        .unwrap_or("point")
 }
 
 /// Ingest dispatch-result hits into the project DB under `layer_id`.
@@ -452,6 +489,7 @@ fn tools_list() -> Value {
             {"name": "layer.import", "description": "Import a GeoJSON/CSV file as a layer: format auto-detected by extension or explicit (geojson|csv); layer_id defaults to the file stem; persists to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "format": {"type": "string"}, "layer_id": {"type": "string"}, "db": {"type": "string"}}, "required": ["path"]}},
             {"name": "processing.buffer", "description": "Buffer point features of a layer into circle polygons: layer_id required; distance (meters, default 200.0), segments (8..256, default 24), output_layer, db optional", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "distance": {"type": "number"}, "segments": {"type": "integer"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["layer_id"]}},
             {"name": "map.forge", "description": "Forge a map from a MapSpec JSON file: path required; live=false dry-runs QL per layer else executes; ingest=true writes live hits to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "live": {"type": "boolean"}, "ingest": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["path"]}},
+            {"name": "wkt.show", "description": "Show WKT geometry as a layer: wkt required (POINT/LINESTRING/POLYGON + MULTI, 2D only); layer_id, db optional; persists to db", "inputSchema": {"type": "object", "properties": {"wkt": {"type": "string"}, "layer_id": {"type": "string"}, "db": {"type": "string"}}, "required": ["wkt"]}},
             {"name": "export.png", "description": "Export map PNG (Phase 1 render path)", "inputSchema": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}}},
         ]
     })
@@ -594,28 +632,7 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
                 .unwrap_or("import");
             let name = out.get("name").and_then(|v| v.as_str()).unwrap_or("import");
             let hits = out.get("hits").cloned().unwrap_or(Value::Null);
-            let geom = hits
-                .as_array()
-                .map(|arr| {
-                    let mut kind = "point";
-                    for h in arr {
-                        if let Some(t) = h
-                            .get("geom")
-                            .and_then(|g| g.get("type"))
-                            .and_then(|t| t.as_str())
-                        {
-                            if t == "Polygon" {
-                                kind = "polygon";
-                                break;
-                            }
-                            if t == "LineString" {
-                                kind = "line";
-                            }
-                        }
-                    }
-                    kind
-                })
-                .unwrap_or("point");
+            let geom = infer_geom_type(&hits);
             let stored = ingest_hits(
                 db.as_deref(),
                 layer,
@@ -626,6 +643,22 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
                 "layer.import",
             );
             json!({"import_result": out, "ingest": stored})
+        }
+        "wkt.show" => {
+            let out = run(Command::WktShow {
+                wkt: str_arg(args, "wkt").unwrap_or_default(),
+                layer_id: str_arg(args, "layer_id"),
+            });
+            if out.get("error").is_some() {
+                return json!({"content": [{"type": "text", "text": out.to_string()}]});
+            }
+            let db = str_arg(args, "db");
+            let layer = out.get("layer").and_then(|v| v.as_str()).unwrap_or("wkt");
+            let name = out.get("name").and_then(|v| v.as_str()).unwrap_or("wkt");
+            let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+            let geom = infer_geom_type(&hits);
+            let stored = ingest_hits(db.as_deref(), layer, name, "wkt", geom, &hits, "wkt.show");
+            json!({"wkt_result": out, "ingest": stored})
         }
         "processing.buffer" => {
             let layer_id = str_arg(args, "layer_id").unwrap_or_default();
@@ -915,28 +948,7 @@ fn main() {
                     .unwrap_or("import")
                     .to_string();
                 let hits = out.get("hits").cloned().unwrap_or(Value::Null);
-                let geom = hits
-                    .as_array()
-                    .map(|arr| {
-                        let mut kind = "point";
-                        for h in arr {
-                            if let Some(t) = h
-                                .get("geom")
-                                .and_then(|g| g.get("type"))
-                                .and_then(|t| t.as_str())
-                            {
-                                if t == "Polygon" {
-                                    kind = "polygon";
-                                    break;
-                                }
-                                if t == "LineString" {
-                                    kind = "line";
-                                }
-                            }
-                        }
-                        kind
-                    })
-                    .unwrap_or("point");
+                let geom = infer_geom_type(&hits);
                 let stored = ingest_hits(
                     db.as_deref(),
                     &layer,
@@ -1018,6 +1030,37 @@ fn main() {
                 }
             }
         }
+        Commands::WktShow {
+            wkt,
+            layer_id,
+            db,
+            json,
+        } => {
+            let out = run(Command::WktShow { wkt, layer_id });
+            if out.get("error").is_some() {
+                show(out, json, "wkt.show");
+            } else {
+                let layer = out
+                    .get("layer")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("wkt")
+                    .to_string();
+                let name = out
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("wkt")
+                    .to_string();
+                let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+                let geom = infer_geom_type(&hits);
+                let stored =
+                    ingest_hits(db.as_deref(), &layer, &name, "wkt", geom, &hits, "wkt.show");
+                show(
+                    json!({"wkt_result": out, "ingest": stored}),
+                    json,
+                    "wkt.show",
+                );
+            }
+        }
         Commands::Mcp { connect } => run_mcp_stdio(connect),
     }
 }
@@ -1034,7 +1077,7 @@ mod tests {
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(tools.len(), 12);
+        assert_eq!(tools.len(), 13);
     }
 
     #[test]
@@ -1083,6 +1126,25 @@ mod tests {
             None,
         );
         assert!(content_text(&result).contains("ingest requires live"));
+    }
+
+    #[test]
+    fn wkt_show_persists_point_to_temp_db() {
+        let db = temp_db("wkt");
+        let result = call_tool(
+            "wkt.show",
+            &json!({"wkt": "POINT (16.3738 48.2082)", "db": db}),
+            None,
+        );
+        let text = content_text(&result);
+        assert!(text.contains("wkt-1"));
+        let _ = std::fs::remove_file(temp_db("wkt"));
+    }
+
+    #[test]
+    fn wkt_show_bad_input_is_typed_error() {
+        let result = call_tool("wkt.show", &json!({"wkt": "POINT (16.3)"}), None);
+        assert!(content_text(&result).contains("invalid input"));
     }
 
     fn content_text(result: &Value) -> String {
