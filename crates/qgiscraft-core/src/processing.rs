@@ -126,8 +126,8 @@ fn polygon_feature(
         lng: center.0,
         lat: center.1,
         geom_json: Some(format!(
-            "{{\"type\":\"Polygon\",\"coordinates\":[{}]}}",
-            format!("[{}]", closed.join(","))
+            "{{\"type\":\"Polygon\",\"coordinates\":[[{}]]}}",
+            closed.join(",")
         )),
     })
 }
