@@ -144,6 +144,40 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Build a rect or hex grid over a bbox (persists to SQLite)
+    ProcessingGrid {
+        #[arg(long)]
+        south: f64,
+        #[arg(long)]
+        west: f64,
+        #[arg(long)]
+        north: f64,
+        #[arg(long)]
+        east: f64,
+        #[arg(long, default_value = "500.0")]
+        cell_size: f64,
+        #[arg(long)]
+        hex: bool,
+        #[arg(long)]
+        output_layer: Option<String>,
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Nearest-neighbor join: hub lines from source to closest target (persists to SQLite)
+    ProcessingNearest {
+        #[arg(long)]
+        source_layer: String,
+        #[arg(long)]
+        target_layer: String,
+        #[arg(long)]
+        output_layer: Option<String>,
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Forge a map from a MapSpec JSON file (dry-run builds QL; --live executes, keyless)
     ForgeFromSpec {
         #[arg(long)]
@@ -488,6 +522,8 @@ fn tools_list() -> Value {
             {"name": "features.list", "description": "List ingested point features, optionally filtered to one layer (db optional)", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "db": {"type": "string"}}}},
             {"name": "layer.import", "description": "Import a GeoJSON/CSV file as a layer: format auto-detected by extension or explicit (geojson|csv); layer_id defaults to the file stem; persists to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "format": {"type": "string"}, "layer_id": {"type": "string"}, "db": {"type": "string"}}, "required": ["path"]}},
             {"name": "processing.buffer", "description": "Buffer point features of a layer into circle polygons: layer_id required; distance (meters, default 200.0), segments (8..256, default 24), output_layer, db optional", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "distance": {"type": "number"}, "segments": {"type": "integer"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["layer_id"]}},
+            {"name": "processing.grid", "description": "Build a rect or hex grid over a bbox: south/west/north/east required; cell_size meters (default 500), hex flag, output_layer, db optional; persists to db", "inputSchema": {"type": "object", "properties": {"south": {"type": "number"}, "west": {"type": "number"}, "north": {"type": "number"}, "east": {"type": "number"}, "cell_size": {"type": "number"}, "hex": {"type": "boolean"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["south", "west", "north", "east"]}},
+            {"name": "processing.nearest", "description": "Nearest-neighbor join: hub lines from source_layer to closest target_layer feature; output_layer, db optional; persists to db", "inputSchema": {"type": "object", "properties": {"source_layer": {"type": "string"}, "target_layer": {"type": "string"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["source_layer", "target_layer"]}},
             {"name": "map.forge", "description": "Forge a map from a MapSpec JSON file: path required; live=false dry-runs QL per layer else executes; ingest=true writes live hits to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "live": {"type": "boolean"}, "ingest": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["path"]}},
             {"name": "wkt.show", "description": "Show WKT geometry as a layer: wkt required (POINT/LINESTRING/POLYGON + MULTI, 2D only); layer_id, db optional; persists to db", "inputSchema": {"type": "object", "properties": {"wkt": {"type": "string"}, "layer_id": {"type": "string"}, "db": {"type": "string"}}, "required": ["wkt"]}},
             {"name": "export.png", "description": "Export map PNG (Phase 1 render path)", "inputSchema": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}}},
@@ -680,6 +716,116 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
                 segments,
                 output_layer.as_deref(),
             )
+        }
+        "processing.grid" => {
+            let out = run(Command::ProcessingGrid {
+                south: args.get("south").and_then(|v| v.as_f64()),
+                west: args.get("west").and_then(|v| v.as_f64()),
+                north: args.get("north").and_then(|v| v.as_f64()),
+                east: args.get("east").and_then(|v| v.as_f64()),
+                cell_size_m: args
+                    .get("cell_size")
+                    .or_else(|| args.get("cell_size_m"))
+                    .and_then(|v| v.as_f64()),
+                hex: args.get("hex").and_then(|v| v.as_bool()).unwrap_or(false),
+                output_layer: str_arg(args, "output_layer"),
+            });
+            if out.get("error").is_some() {
+                return json!({"content": [{"type": "text", "text": out.to_string()}]});
+            }
+            let db = str_arg(args, "db");
+            let layer = out.get("layer").and_then(|v| v.as_str()).unwrap_or("grid");
+            let name = out.get("name").and_then(|v| v.as_str()).unwrap_or("grid");
+            let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+            let stored = ingest_hits(
+                db.as_deref(),
+                layer,
+                name,
+                "processing:grid",
+                "polygon",
+                &hits,
+                "processing.grid",
+            );
+            json!({"grid_result": out, "ingest": stored})
+        }
+        "processing.nearest" => {
+            let out = run(Command::ProcessingNearest {
+                source_layer: str_arg(args, "source_layer").unwrap_or_default(),
+                target_layer: str_arg(args, "target_layer").unwrap_or_default(),
+                output_layer: str_arg(args, "output_layer"),
+            });
+            if out.get("error").is_some() {
+                return json!({"content": [{"type": "text", "text": out.to_string()}]});
+            }
+            let db = str_arg(args, "db");
+            let source = out
+                .get("source_layer")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let target = out
+                .get("target_layer")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let out_id = out
+                .get("output_layer")
+                .and_then(|v| v.as_str())
+                .unwrap_or("nearest")
+                .to_string();
+            let conn = match store::open_at(db.as_deref()) {
+                Ok(c) => c,
+                Err(e) => return json!({"error": e.to_string(), "op": "processing.nearest"}),
+            };
+            let load = |id: &str| -> Result<Vec<qgiscraft_core::import::RawFeature>, String> {
+                match store::list_features(&conn, Some(id)) {
+                    Ok(rows) => Ok(rows
+                        .into_iter()
+                        .map(|f| qgiscraft_core::import::RawFeature {
+                            name: f.name,
+                            kind: f.kind,
+                            lng: f.lng,
+                            lat: f.lat,
+                            geom_json: f.geom_json,
+                        })
+                        .collect()),
+                    Err(e) => Err(e.to_string()),
+                }
+            };
+            let src_feats = match load(&source) {
+                Ok(f) => f,
+                Err(e) => return json!({"error": e, "op": "processing.nearest"}),
+            };
+            let tgt_feats = match load(&target) {
+                Ok(f) => f,
+                Err(e) => return json!({"error": e, "op": "processing.nearest"}),
+            };
+            let lines = match qgiscraft_core::processing::nearest_join(&src_feats, &tgt_feats) {
+                Ok(l) => l,
+                Err(e) => return json!({"error": e.to_string(), "op": "processing.nearest"}),
+            };
+            let count = lines.len();
+            let hits_vec: Vec<Value> = lines
+                .iter()
+                .map(|f| {
+                    let geom: Value = serde_json::from_str(
+                        f.geom_json.as_deref().unwrap_or("null"),
+                    )
+                    .unwrap_or(Value::Null);
+                    json!({"name": f.name, "kind": f.kind, "lng": f.lng, "lat": f.lat, "geom": geom})
+                })
+                .collect();
+            let hits = Value::Array(hits_vec);
+            let stored = ingest_hits(
+                db.as_deref(),
+                &out_id,
+                &out_id,
+                "processing:nearest",
+                "line",
+                &hits,
+                "processing.nearest",
+            );
+            json!({"nearest_result": out, "layer": out_id, "count": count, "ingest": stored})
         }
         "map.forge" => {
             let live = args.get("live").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -982,6 +1128,144 @@ fn main() {
             );
             show(result, json, "processing.buffer");
         }
+        Commands::ProcessingGrid {
+            south,
+            west,
+            north,
+            east,
+            cell_size,
+            hex,
+            output_layer,
+            db,
+            json,
+        } => {
+            let out = run(Command::ProcessingGrid {
+                south: Some(south),
+                west: Some(west),
+                north: Some(north),
+                east: Some(east),
+                cell_size_m: Some(cell_size),
+                hex,
+                output_layer,
+            });
+            if out.get("error").is_some() {
+                show(out, json, "processing.grid");
+            } else {
+                let layer = out
+                    .get("layer")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("grid")
+                    .to_string();
+                let name = out
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("grid")
+                    .to_string();
+                let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+                let stored = ingest_hits(
+                    db.as_deref(),
+                    &layer,
+                    &name,
+                    "processing:grid",
+                    "polygon",
+                    &hits,
+                    "processing.grid",
+                );
+                show(
+                    json!({"grid_result": out, "ingest": stored}),
+                    json,
+                    "processing.grid",
+                );
+            }
+        }
+        Commands::ProcessingNearest {
+            source_layer,
+            target_layer,
+            output_layer,
+            db,
+            json,
+        } => {
+            let out = run(Command::ProcessingNearest {
+                source_layer: source_layer.clone(),
+                target_layer: target_layer.clone(),
+                output_layer: output_layer.clone(),
+            });
+            if out.get("error").is_some() {
+                show(out, json, "processing.nearest");
+            } else {
+                let out_id = out
+                    .get("output_layer")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("nearest")
+                    .to_string();
+                let conn = match store::open_at(db.as_deref()) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        show(
+                            json!({"error": e.to_string(), "op": "processing.nearest"}),
+                            json,
+                            "processing.nearest",
+                        );
+                        return;
+                    }
+                };
+                let load = |id: &str| -> Result<Vec<qgiscraft_core::import::RawFeature>, String> {
+                    match store::list_features(&conn, Some(id)) {
+                        Ok(rows) => Ok(rows
+                            .into_iter()
+                            .map(|f| qgiscraft_core::import::RawFeature {
+                                name: f.name,
+                                kind: f.kind,
+                                lng: f.lng,
+                                lat: f.lat,
+                                geom_json: f.geom_json,
+                            })
+                            .collect()),
+                        Err(e) => Err(e.to_string()),
+                    }
+                };
+                let joined = load(&source_layer)
+                    .and_then(|s| load(&target_layer).map(|t| (s, t)))
+                    .and_then(|(s, t)| {
+                        qgiscraft_core::processing::nearest_join(&s, &t).map_err(|e| e.to_string())
+                    });
+                match joined {
+                    Err(e) => show(
+                        json!({"error": e, "op": "processing.nearest"}),
+                        json,
+                        "processing.nearest",
+                    ),
+                    Ok(lines) => {
+                        let count = lines.len();
+                        let hits_vec: Vec<Value> = lines
+                            .iter()
+                            .map(|f| {
+                                let geom: Value = serde_json::from_str(
+                                    f.geom_json.as_deref().unwrap_or("null"),
+                                )
+                                .unwrap_or(Value::Null);
+                                json!({"name": f.name, "kind": f.kind, "lng": f.lng, "lat": f.lat, "geom": geom})
+                            })
+                            .collect();
+                        let hits = Value::Array(hits_vec);
+                        let stored = ingest_hits(
+                            db.as_deref(),
+                            &out_id,
+                            &out_id,
+                            "processing:nearest",
+                            "line",
+                            &hits,
+                            "processing.nearest",
+                        );
+                        show(
+                            json!({"nearest_result": out, "layer": out_id, "count": count, "ingest": stored}),
+                            json,
+                            "processing.nearest",
+                        );
+                    }
+                }
+            }
+        }
         Commands::ForgeFromSpec {
             path,
             live,
@@ -1077,7 +1361,7 @@ mod tests {
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(tools.len(), 13);
+        assert_eq!(tools.len(), 15);
     }
 
     #[test]
@@ -1144,6 +1428,72 @@ mod tests {
     #[test]
     fn wkt_show_bad_input_is_typed_error() {
         let result = call_tool("wkt.show", &json!({"wkt": "POINT (16.3)"}), None);
+        assert!(content_text(&result).contains("invalid input"));
+    }
+
+    #[test]
+    fn processing_grid_persists_cells_to_temp_db() {
+        let db = temp_db("grid");
+        let result = call_tool(
+            "processing.grid",
+            &json!({"south": 48.20, "west": 16.36, "north": 48.21, "east": 16.37, "cell_size": 500.0, "db": db}),
+            None,
+        );
+        let text = content_text(&result);
+        assert!(text.contains("cell-0-0"));
+        let _ = std::fs::remove_file(temp_db("grid"));
+    }
+
+    #[test]
+    fn processing_grid_missing_bbox_is_typed_error() {
+        let result = call_tool("processing.grid", &json!({}), None);
+        assert!(content_text(&result).contains("south/west/north/east"));
+    }
+
+    #[test]
+    fn processing_nearest_joins_layers_in_temp_db() {
+        let db = temp_db("nearest");
+        let src = json!([{"name": "bike-1", "kind": "point", "lng": 16.37, "lat": 48.20}]);
+        let tgt = json!([
+            {"name": "near-pharm", "kind": "point", "lng": 16.371, "lat": 48.2005},
+            {"name": "far-pharm", "kind": "point", "lng": 16.40, "lat": 48.22},
+        ]);
+        let _ = ingest_hits(
+            Some(db.as_str()),
+            "bikes",
+            "bikes",
+            "test",
+            "point",
+            &src,
+            "test",
+        );
+        let _ = ingest_hits(
+            Some(db.as_str()),
+            "pharms",
+            "pharms",
+            "test",
+            "point",
+            &tgt,
+            "test",
+        );
+        let result = call_tool(
+            "processing.nearest",
+            &json!({"source_layer": "bikes", "target_layer": "pharms", "db": db}),
+            None,
+        );
+        let text = content_text(&result);
+        assert!(text.contains("bikes-nearest"));
+        assert!(text.contains("\"count\":1"));
+        let _ = std::fs::remove_file(temp_db("nearest"));
+    }
+
+    #[test]
+    fn processing_nearest_empty_source_is_typed_error() {
+        let result = call_tool(
+            "processing.nearest",
+            &json!({"source_layer": "", "target_layer": "x"}),
+            None,
+        );
         assert!(content_text(&result).contains("invalid input"));
     }
 
