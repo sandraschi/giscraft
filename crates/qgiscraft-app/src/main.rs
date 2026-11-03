@@ -10,9 +10,11 @@
 
 use eframe::egui;
 use qgiscraft_core::control;
+use qgiscraft_core::geo;
 use qgiscraft_core::import;
 use qgiscraft_core::tiles;
 use qgiscraft_core::triangulate;
+use qgiscraft_core::wkt;
 use qgiscraft_store as store;
 use std::collections::HashMap;
 
@@ -35,6 +37,13 @@ enum Dialog {
     Geocode {
         query: String,
         limit: String,
+    },
+    Wkt {
+        text: String,
+        layer_id: String,
+    },
+    ZoomTo {
+        text: String,
     },
     Buffer {
         radius_m: String,
@@ -505,6 +514,85 @@ impl QgisCraftApp {
         } else {
             self.push_log("nothing selected".to_string());
         }
+    }
+
+    /// Plugins > Zoom to coordinates: center the canvas on parsed lat,lng.
+    fn zoom_to_coords(&mut self, text: &str) {
+        match geo::parse_latlng(text) {
+            Ok(p) => {
+                self.center_lng = p.lng;
+                self.center_lat = p.lat;
+                self.zoom = 15.0;
+                self.status = "zoom".to_string();
+                self.push_log(format!("zoom to {}, {}", p.lat, p.lng));
+            }
+            Err(e) => self.push_log(format!("coords failed: {e}")),
+        }
+    }
+
+    /// Plugins > Show WKT: parse and persist as a layer, then fit it.
+    fn submit_wkt(&mut self, text: &str, layer_id: &str) {
+        if layer_id.is_empty() || layer_id.chars().count() > 64 {
+            self.push_log("wkt failed: layer id must be 1..64 chars".to_string());
+            return;
+        }
+        let feats = match wkt::parse_wkt(text) {
+            Ok(f) => f,
+            Err(e) => {
+                self.push_log(format!("wkt failed: {e}"));
+                return;
+            }
+        };
+        if feats.is_empty() {
+            self.push_log("wkt: empty geometry, nothing added".to_string());
+            return;
+        }
+        let mut geom_type = "point";
+        for f in &feats {
+            if f.geojson.contains("\"Polygon\"") {
+                geom_type = "polygon";
+                break;
+            }
+            if f.geojson.contains("\"LineString\"") {
+                geom_type = "line";
+            }
+        }
+        let rows: Vec<store::StoredFeature> = feats
+            .iter()
+            .map(|f| store::StoredFeature {
+                layer_id: layer_id.to_string(),
+                name: f.name.clone(),
+                kind: f.kind.clone(),
+                lng: f.lng,
+                lat: f.lat,
+                geom_json: Some(f.geojson.clone()),
+            })
+            .collect();
+        let n = rows.len();
+        let outcome = match store::open_default() {
+            Ok(conn) => {
+                let layer = store::StoredLayer {
+                    id: layer_id.to_string(),
+                    name: layer_id.to_string(),
+                    source: "wkt".to_string(),
+                    geom_type: geom_type.to_string(),
+                    crs: "EPSG:4326".to_string(),
+                    visible: true,
+                };
+                match store::add_layer(&conn, &layer)
+                    .and_then(|()| store::replace_features(&conn, layer_id, &rows).map(|_| ()))
+                {
+                    Ok(()) => format!("wkt: {n} features into {layer_id}"),
+                    Err(e) => format!("wkt ingest failed: {e}"),
+                }
+            }
+            Err(e) => format!("db open failed: {e}"),
+        };
+        self.selected = Some(layer_id.to_string());
+        self.refresh();
+        self.fit_only = Some(layer_id.to_string());
+        self.fit_requested = true;
+        self.push_log(outcome);
     }
 
     /// Show/hide every layer at once.
@@ -1115,6 +1203,59 @@ impl QgisCraftApp {
                     keep = false;
                 }
             }
+            Dialog::Wkt { text, layer_id } => {
+                let mut submit = false;
+                let mut cancel = false;
+                egui::Window::new("Show WKT as layer").show(ui.ctx(), |ui| {
+                    ui.label("WKT (POINT / LINESTRING / POLYGON + MULTI, 2D):");
+                    ui.text_edit_multiline(text);
+                    ui.label("Layer id:");
+                    ui.text_edit_singleline(layer_id);
+                    ui.horizontal(|ui| {
+                        if ui.button("Show").clicked() {
+                            submit = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+                if submit {
+                    let id = if layer_id.trim().is_empty() {
+                        "wkt".to_string()
+                    } else {
+                        layer_id.trim().to_string()
+                    };
+                    let body = text.clone();
+                    self.submit_wkt(&body, &id);
+                    keep = false;
+                } else if cancel {
+                    keep = false;
+                }
+            }
+            Dialog::ZoomTo { text } => {
+                let mut submit = false;
+                let mut cancel = false;
+                egui::Window::new("Zoom to coordinates").show(ui.ctx(), |ui| {
+                    ui.label("lat, lng — e.g. 48.2082, 16.3738 (N/S/E/W suffixes ok):");
+                    ui.text_edit_singleline(text);
+                    ui.horizontal(|ui| {
+                        if ui.button("Go").clicked() {
+                            submit = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+                if submit {
+                    let body = text.clone();
+                    self.zoom_to_coords(&body);
+                    keep = false;
+                } else if cancel {
+                    keep = false;
+                }
+            }
             Dialog::Buffer { radius_m } => {
                 let mut cancel = false;
                 let mut submit: Option<f64> = None;
@@ -1627,13 +1768,26 @@ impl eframe::App for QgisCraftApp {
                         };
                     }
                 });
-                for menu in ["Edit", "Plugins"] {
+                for menu in ["Edit"] {
                     ui.menu_button(menu, |ui| {
                         ui.label(format!(
                             "{menu} commands land with later phases (typed, not stubbed)"
                         ));
                     });
                 }
+                ui.menu_button("Plugins", |ui| {
+                    if ui.button("Show WKT...").clicked() {
+                        self.dialog = Dialog::Wkt {
+                            text: String::new(),
+                            layer_id: "wkt".to_string(),
+                        };
+                    }
+                    if ui.button("Zoom to coordinates...").clicked() {
+                        self.dialog = Dialog::ZoomTo {
+                            text: String::new(),
+                        };
+                    }
+                });
             });
         });
         if self.show_about {
