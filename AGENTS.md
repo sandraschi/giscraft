@@ -1,4 +1,4 @@
-# AGENTS.md - qgiscraft-mcp (storytold craft pattern, adapted)
+# AGENTS.md - qgiscraft (storytold craft pattern, adapted)
 
 QGIS-class GIS: clean-room 1:1 clone for muscle memory, modern Rust backend,
 CLI + MCP first. Dual track: Track A native egui clone, Track B sandraschi

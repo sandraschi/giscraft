@@ -1,4 +1,8 @@
-# Changelog - qgiscraft-mcp
+# Changelog - qgiscraft
+
+## Unreleased - repo rename qgiscraft-mcp -> qgiscraft (craft convention)
+- GitHub `sandraschi/qgiscraft-mcp` renamed to `sandraschi/qgiscraft` (old URL redirects); local checkout moves to `D:\Dev\repos\qgiscraft`. Crate/binary names unchanged (`qgiscraft-mcp` L2 CLI/MCP, `qgiscraft-app`, `qgiscraft-web`): only the repo container, clone URLs, titles, and `glama.json` were renamed, like `gamecraft` (repo) vs `gamecraft-mcp` (crate).
+- Gates re-verified after rename: clippy -D warnings, tests green, fmt clean.
 
 ## Unreleased - mapforge MVP (spec -> QL plan -> ingest, depot + forge gate)
 - New `map.forge` tool + `forge-from-spec` CLI (12 tools total): MapSpec JSON (title/slug/bbox/1..8 layers) validates offline, dry-run returns deterministic Overpass QL per layer, `--live` executes (cap 100/layer), `--ingest` persists each layer to SQLite. Single content envelope over MCP (no double-wrap), hostile inputs are typed errors.
