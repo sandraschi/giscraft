@@ -21,6 +21,7 @@ pub mod processing;
 pub mod project;
 pub mod tiles;
 pub mod triangulate;
+pub mod wkt;
 
 use error::GisError;
 use serde_json::{json, Value};
@@ -37,6 +38,7 @@ pub const CMD_FEATURES_LIST: &str = "features.list";
 pub const CMD_LAYER_IMPORT: &str = "layer.import";
 pub const CMD_PROCESSING_BUFFER: &str = "processing.buffer";
 pub const CMD_MAP_FORGE: &str = "map.forge";
+pub const CMD_WKT_SHOW: &str = "wkt.show";
 pub const CMD_EXPORT_PNG: &str = "export.png";
 
 /// Bounded command bus. New capability = new variant + dispatch arm + test.
@@ -84,6 +86,10 @@ pub enum Command {
         path: String,
         live: bool,
     },
+    WktShow {
+        wkt: String,
+        layer_id: Option<String>,
+    },
     ExportPng {
         width: Option<u32>,
         height: Option<u32>,
@@ -108,7 +114,7 @@ pub async fn dispatch(cmd: Command) -> Value {
             "commands": [
                 CMD_STATUS, CMD_PROJECT_STATUS,
                 CMD_LAYER_ADD, CMD_LAYER_LIST, CMD_LAYER_REMOVE,
-                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_MAP_FORGE, CMD_EXPORT_PNG,
+                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_MAP_FORGE, CMD_WKT_SHOW, CMD_EXPORT_PNG,
             ],
             "agent_contract": "CLI-first: every command supports --json; `mcp` subcommand mirrors the same dispatch over stdio",
         }),
@@ -363,6 +369,39 @@ pub async fn dispatch(cmd: Command) -> Value {
                 "live": true,
             })
         }
+        Command::WktShow { wkt, layer_id } => {
+            if wkt.trim().is_empty() {
+                return json!({"error": "invalid input: wkt must not be empty", "op": "wkt.show"});
+            }
+            if wkt.chars().count() > 1_000_000 {
+                return json!({"error": "invalid input: wkt exceeds 1000000 chars", "op": "wkt.show"});
+            }
+            let feats = match wkt::parse_wkt(&wkt) {
+                Ok(f) => f,
+                Err(e) => return json!({"error": e.to_string(), "op": "wkt.show"}),
+            };
+            let layer = match layer_id {
+                Some(id) if !id.trim().is_empty() => id.trim().to_string(),
+                _ => "wkt".to_string(),
+            };
+            if layer.chars().count() > 64 {
+                return json!({"error": "invalid input: layer id exceeds 64 chars", "op": "wkt.show"});
+            }
+            let hits: Vec<Value> = feats
+                .iter()
+                .map(|f| {
+                    let geom: Value = serde_json::from_str(&f.geojson).unwrap_or(Value::Null);
+                    json!({"name": f.name, "kind": f.kind, "lng": f.lng, "lat": f.lat, "geom": geom})
+                })
+                .collect();
+            json!({
+                "op": "wkt.show",
+                "layer": layer.clone(),
+                "name": layer,
+                "count": hits.len(),
+                "hits": hits,
+            })
+        }
         Command::ExportPng {
             width: _,
             height: _,
@@ -384,7 +423,7 @@ mod tests {
             .and_then(|c| c.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(cmds.len(), 12);
+        assert_eq!(cmds.len(), 13);
     }
 
     #[tokio::test]
@@ -505,6 +544,35 @@ mod tests {
             v.get("layers").and_then(|l| l.as_array()).map(|a| a.len()),
             Some(1)
         );
+    }
+
+    #[tokio::test]
+    async fn wkt_show_parses_inline_no_file_no_network() {
+        let v = dispatch(Command::WktShow {
+            wkt: "POINT (16.3738 48.2082)".to_string(),
+            layer_id: None,
+        })
+        .await;
+        assert_eq!(v.get("count").and_then(|n| n.as_u64()), Some(1));
+        assert_eq!(v.get("layer").and_then(|s| s.as_str()), Some("wkt"));
+        let line = dispatch(Command::WktShow {
+            wkt: "LINESTRING (16.3 48.2, 16.4 48.25)".to_string(),
+            layer_id: Some("route".to_string()),
+        })
+        .await;
+        assert_eq!(line.get("layer").and_then(|s| s.as_str()), Some("route"));
+        let bad = dispatch(Command::WktShow {
+            wkt: "POINT (16.3)".to_string(),
+            layer_id: None,
+        })
+        .await;
+        assert!(bad.get("error").is_some());
+        let empty = dispatch(Command::WktShow {
+            wkt: "   ".to_string(),
+            layer_id: None,
+        })
+        .await;
+        assert!(empty.get("error").is_some());
     }
 
     #[tokio::test]

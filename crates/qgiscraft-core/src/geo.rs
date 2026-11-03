@@ -50,6 +50,94 @@ impl Bbox {
     }
 }
 
+/// Parse human "lat, lng" text: "48.2082, 16.3738", "48.2082 16.3738",
+/// "48.2082; 16.3738", optional N/S/E/W suffix per component ("48.2N, 16.3E").
+/// Order is always lat-first. S/W suffixes negate; a suffix contradicting an
+/// explicit sign is rejected.
+pub fn parse_latlng(text: &str) -> Result<LonLat, GisError> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err(GisError::InvalidInput(
+            "coords must not be empty".to_string(),
+        ));
+    }
+    if trimmed.chars().count() > 64 {
+        return Err(GisError::InvalidInput(
+            "coords exceeds 64 chars".to_string(),
+        ));
+    }
+    let parts: Vec<&str> = if trimmed.contains(',') {
+        trimmed.split(',').collect()
+    } else if trimmed.contains(';') {
+        trimmed.split(';').collect()
+    } else {
+        trimmed.split_whitespace().collect()
+    };
+    if parts.len() != 2 {
+        return Err(GisError::InvalidInput(
+            "coords need exactly two numbers (lat, lng)".to_string(),
+        ));
+    }
+    let lat = parse_component(parts[0], true)?;
+    let lng = parse_component(parts[1], false)?;
+    LonLat::new(lng, lat)
+}
+
+fn parse_component(raw: &str, is_lat: bool) -> Result<f64, GisError> {
+    let bad = || GisError::InvalidInput("bad coordinate component".to_string());
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(bad());
+    }
+    let (num_part, suffix) = match trimmed.chars().last() {
+        Some(c) if c.is_ascii_alphabetic() => {
+            let n = trimmed.len() - c.len_utf8();
+            let (num, suf) = trimmed.split_at(n);
+            (num.trim(), suf.to_ascii_uppercase())
+        }
+        _ => (trimmed, String::new()),
+    };
+    if !suffix.is_empty() && suffix != "N" && suffix != "S" && suffix != "E" && suffix != "W" {
+        return Err(bad());
+    }
+    if is_lat && (suffix == "E" || suffix == "W") {
+        return Err(GisError::InvalidInput(
+            "latitude takes N/S, not E/W".to_string(),
+        ));
+    }
+    if !is_lat && (suffix == "N" || suffix == "S") {
+        return Err(GisError::InvalidInput(
+            "longitude takes E/W, not N/S".to_string(),
+        ));
+    }
+    let value: f64 = num_part.parse().map_err(|_| bad())?;
+    if !value.is_finite() {
+        return Err(bad());
+    }
+    let explicit_neg = value < 0.0;
+    let magnitude = value.abs();
+    let negative = match suffix.as_str() {
+        "S" | "W" => {
+            if explicit_neg {
+                return Err(GisError::InvalidInput(
+                    "sign and cardinal suffix contradict".to_string(),
+                ));
+            }
+            true
+        }
+        "N" | "E" => {
+            if explicit_neg {
+                return Err(GisError::InvalidInput(
+                    "sign and cardinal suffix contradict".to_string(),
+                ));
+            }
+            false
+        }
+        _ => explicit_neg,
+    };
+    Ok(if negative { -magnitude } else { magnitude })
+}
+
 /// Haversine distance in meters. Pure math, infallible for fenced inputs.
 pub fn haversine_m(a: LonLat, b: LonLat) -> f64 {
     let r = 6_371_008.8_f64;
@@ -75,5 +163,31 @@ mod tests {
     #[test]
     fn hostile_bbox_rejected() {
         assert!(Bbox::new(16.0, 48.0, 15.0, 49.0).is_err());
+    }
+
+    #[test]
+    fn latlng_accepts_common_forms() {
+        let p = parse_latlng("48.2082, 16.3738").unwrap_or(LonLat { lng: 0.0, lat: 0.0 });
+        assert!((p.lat - 48.2082).abs() < 1e-9);
+        assert!((p.lng - 16.3738).abs() < 1e-9);
+        let s = parse_latlng("48.2082 16.3738").unwrap_or(LonLat { lng: 0.0, lat: 0.0 });
+        assert!((s.lat - 48.2082).abs() < 1e-9);
+        let card = parse_latlng("48.2082N, 16.3738E").unwrap_or(LonLat { lng: 0.0, lat: 0.0 });
+        assert!((card.lat - 48.2082).abs() < 1e-9);
+        let south = parse_latlng("33.8S, 151.2E").unwrap_or(LonLat { lng: 0.0, lat: 0.0 });
+        assert!(south.lat < 0.0 && south.lng > 0.0);
+    }
+
+    #[test]
+    fn latlng_rejects_garbage() {
+        assert!(parse_latlng("").is_err());
+        assert!(parse_latlng("48.2").is_err());
+        assert!(parse_latlng("48.2, 16.3, 5.0").is_err());
+        assert!(parse_latlng("abc, 16.3").is_err());
+        assert!(parse_latlng("91.0, 16.3").is_err());
+        assert!(parse_latlng("48.2, 191.0").is_err());
+        assert!(parse_latlng("48.2E, 16.3").is_err());
+        assert!(parse_latlng("-48.2S, 16.3").is_err());
+        assert!(parse_latlng("48.2, NaN").is_err());
     }
 }
