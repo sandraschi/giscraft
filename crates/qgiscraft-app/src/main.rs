@@ -45,6 +45,20 @@ enum Dialog {
     ZoomTo {
         text: String,
     },
+    Grid {
+        south: String,
+        west: String,
+        north: String,
+        east: String,
+        cell_size_m: String,
+        hex: bool,
+        layer_id: String,
+    },
+    Nearest {
+        source: String,
+        target: String,
+        output: String,
+    },
     Buffer {
         radius_m: String,
     },
@@ -591,6 +605,150 @@ impl QgisCraftApp {
         self.selected = Some(layer_id.to_string());
         self.refresh();
         self.fit_only = Some(layer_id.to_string());
+        self.fit_requested = true;
+        self.push_log(outcome);
+    }
+
+    /// Processing toolbox > Create grid: build rect/hex cells, persist, fit.
+    fn submit_grid(&mut self, args: (String, String, String, String, String, bool, String)) {
+        let (south, west, north, east, cell_size_m, hex, layer_id) = args;
+        if layer_id.is_empty() || layer_id.chars().count() > 64 {
+            self.push_log("grid failed: layer id must be 1..64 chars".to_string());
+            return;
+        }
+        let mut parse = |t: &str, label: &str| -> Option<f64> {
+            match t.trim().parse::<f64>() {
+                Ok(v) if v.is_finite() => Some(v),
+                _ => {
+                    self.push_log(format!("grid failed: bad {label}"));
+                    None
+                }
+            }
+        };
+        let (Some(s), Some(w), Some(n), Some(e), Some(cell)) = (
+            parse(&south, "south"),
+            parse(&west, "west"),
+            parse(&north, "north"),
+            parse(&east, "east"),
+            parse(&cell_size_m, "cell size"),
+        ) else {
+            return;
+        };
+        let feats = match qgiscraft_core::processing::grid_features(s, w, n, e, cell, hex) {
+            Ok(f) => f,
+            Err(e) => {
+                self.push_log(format!("grid failed: {e}"));
+                return;
+            }
+        };
+        let rows: Vec<store::StoredFeature> = feats
+            .iter()
+            .map(|f| store::StoredFeature {
+                layer_id: layer_id.clone(),
+                name: f.name.clone(),
+                kind: f.kind.clone(),
+                lng: f.lng,
+                lat: f.lat,
+                geom_json: f.geom_json.clone(),
+            })
+            .collect();
+        let n = rows.len();
+        let outcome = match store::open_default() {
+            Ok(conn) => {
+                let layer = store::StoredLayer {
+                    id: layer_id.clone(),
+                    name: layer_id.clone(),
+                    source: "processing:grid".to_string(),
+                    geom_type: "polygon".to_string(),
+                    crs: "EPSG:4326".to_string(),
+                    visible: true,
+                };
+                match store::add_layer(&conn, &layer)
+                    .and_then(|()| store::replace_features(&conn, &layer_id, &rows).map(|_| ()))
+                {
+                    Ok(()) => format!("grid: {n} cells into {layer_id}"),
+                    Err(e) => format!("grid ingest failed: {e}"),
+                }
+            }
+            Err(e) => format!("db open failed: {e}"),
+        };
+        self.selected = Some(layer_id.clone());
+        self.refresh();
+        self.fit_only = Some(layer_id.clone());
+        self.fit_requested = true;
+        self.push_log(outcome);
+    }
+
+    /// Processing toolbox > Nearest neighbor join: hub lines, persist, fit.
+    fn submit_nearest(&mut self, args: (String, String, String)) {
+        let (source, target, output) = args;
+        if source.trim().is_empty() || target.trim().is_empty() {
+            self.push_log("nearest failed: source and target layers required".to_string());
+            return;
+        }
+        let out_id = if output.trim().is_empty() {
+            format!("{source}-nearest")
+        } else {
+            output.trim().to_string()
+        };
+        let outcome = match store::open_default() {
+            Ok(conn) => {
+                let load = |id: &str| -> Result<Vec<qgiscraft_core::import::RawFeature>, String> {
+                    match store::list_features(&conn, Some(id)) {
+                        Ok(rows) => Ok(rows
+                            .into_iter()
+                            .map(|f| qgiscraft_core::import::RawFeature {
+                                name: f.name,
+                                kind: f.kind,
+                                lng: f.lng,
+                                lat: f.lat,
+                                geom_json: f.geom_json,
+                            })
+                            .collect()),
+                        Err(e) => Err(e.to_string()),
+                    }
+                };
+                let joined = load(source.trim()).and_then(|s| load(target.trim()).map(|t| (s, t)));
+                match joined {
+                    Err(e) => format!("nearest failed: {e}"),
+                    Ok((s, t)) => match qgiscraft_core::processing::nearest_join(&s, &t) {
+                        Err(e) => format!("nearest failed: {e}"),
+                        Ok(lines) => {
+                            let rows: Vec<store::StoredFeature> = lines
+                                .iter()
+                                .map(|f| store::StoredFeature {
+                                    layer_id: out_id.clone(),
+                                    name: f.name.clone(),
+                                    kind: "way".to_string(),
+                                    lng: f.lng,
+                                    lat: f.lat,
+                                    geom_json: f.geom_json.clone(),
+                                })
+                                .collect();
+                            let n = rows.len();
+                            let layer = store::StoredLayer {
+                                id: out_id.clone(),
+                                name: out_id.clone(),
+                                source: "processing:nearest".to_string(),
+                                geom_type: "line".to_string(),
+                                crs: "EPSG:4326".to_string(),
+                                visible: true,
+                            };
+                            match store::add_layer(&conn, &layer).and_then(|()| {
+                                store::replace_features(&conn, &out_id, &rows).map(|_| ())
+                            }) {
+                                Ok(()) => format!("nearest: {n} hub lines into {out_id}"),
+                                Err(e) => format!("nearest ingest failed: {e}"),
+                            }
+                        }
+                    },
+                }
+            }
+            Err(e) => format!("db open failed: {e}"),
+        };
+        self.selected = Some(out_id.clone());
+        self.refresh();
+        self.fit_only = Some(out_id.clone());
         self.fit_requested = true;
         self.push_log(outcome);
     }
@@ -1251,6 +1409,99 @@ impl QgisCraftApp {
                 if submit {
                     let body = text.clone();
                     self.zoom_to_coords(&body);
+                    keep = false;
+                } else if cancel {
+                    keep = false;
+                }
+            }
+            Dialog::Grid {
+                south,
+                west,
+                north,
+                east,
+                cell_size_m,
+                hex,
+                layer_id,
+            } => {
+                let mut submit = false;
+                let mut cancel = false;
+                egui::Window::new("Create grid").show(ui.ctx(), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("South:");
+                        ui.text_edit_singleline(south);
+                        ui.label("West:");
+                        ui.text_edit_singleline(west);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("North:");
+                        ui.text_edit_singleline(north);
+                        ui.label("East:");
+                        ui.text_edit_singleline(east);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Cell size (m):");
+                        ui.text_edit_singleline(cell_size_m);
+                        ui.checkbox(hex, "Hex (unchecked = rectangles)");
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Layer id:");
+                        ui.text_edit_singleline(layer_id);
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Build").clicked() {
+                            submit = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+                if submit {
+                    let args = (
+                        south.clone(),
+                        west.clone(),
+                        north.clone(),
+                        east.clone(),
+                        cell_size_m.clone(),
+                        *hex,
+                        if layer_id.trim().is_empty() {
+                            "grid".to_string()
+                        } else {
+                            layer_id.trim().to_string()
+                        },
+                    );
+                    self.submit_grid(args);
+                    keep = false;
+                } else if cancel {
+                    keep = false;
+                }
+            }
+            Dialog::Nearest {
+                source,
+                target,
+                output,
+            } => {
+                let mut submit = false;
+                let mut cancel = false;
+                egui::Window::new("Nearest neighbor join").show(ui.ctx(), |ui| {
+                    ui.label("Source layer (hubs start here):");
+                    ui.text_edit_singleline(source);
+                    ui.label("Target layer (nearest match):");
+                    ui.text_edit_singleline(target);
+                    ui.label("Output layer (empty = <source>-nearest):");
+                    ui.text_edit_singleline(output);
+                    ui.horizontal(|ui| {
+                        if ui.button("Join").clicked() {
+                            submit = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+                if submit {
+                    let args = (source.clone(), target.clone(), output.clone());
+                    self.submit_nearest(args);
                     keep = false;
                 } else if cancel {
                     keep = false;
@@ -1950,6 +2201,8 @@ impl eframe::App for QgisCraftApp {
                     "Photon search into a point layer",
                 ),
                 ("Buffer points", "Circle polygons around selected points"),
+                ("Create grid", "Rect or hex grid over a bbox"),
+                ("Nearest neighbor join", "Hub lines to closest features"),
             ] {
                 if !query.is_empty()
                     && !name.to_lowercase().contains(&query)
@@ -1968,6 +2221,36 @@ impl eframe::App for QgisCraftApp {
                         "Geocode places to layer" => Dialog::Geocode {
                             query: String::new(),
                             limit: "5".to_string(),
+                        },
+                        "Create grid" => {
+                            let (s, w, n, e) = match self.view_bbox() {
+                                Some(b) => (
+                                    b.min_lat.to_string(),
+                                    b.min_lng.to_string(),
+                                    b.max_lat.to_string(),
+                                    b.max_lng.to_string(),
+                                ),
+                                None => (
+                                    "48.195".to_string(),
+                                    "16.355".to_string(),
+                                    "48.225".to_string(),
+                                    "16.395".to_string(),
+                                ),
+                            };
+                            Dialog::Grid {
+                                south: s,
+                                west: w,
+                                north: n,
+                                east: e,
+                                cell_size_m: "500".to_string(),
+                                hex: false,
+                                layer_id: "grid".to_string(),
+                            }
+                        }
+                        "Nearest neighbor join" => Dialog::Nearest {
+                            source: self.selected.clone().unwrap_or_default(),
+                            target: String::new(),
+                            output: String::new(),
                         },
                         _ => Dialog::Buffer {
                             radius_m: "500".to_string(),
