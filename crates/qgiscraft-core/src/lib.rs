@@ -15,6 +15,7 @@ pub mod error;
 pub mod geo;
 pub mod geocode;
 pub mod import;
+pub mod mapforge;
 pub mod overpass;
 pub mod processing;
 pub mod project;
@@ -35,6 +36,7 @@ pub const CMD_OVERPASS_QUERY: &str = "overpass.query";
 pub const CMD_FEATURES_LIST: &str = "features.list";
 pub const CMD_LAYER_IMPORT: &str = "layer.import";
 pub const CMD_PROCESSING_BUFFER: &str = "processing.buffer";
+pub const CMD_MAP_FORGE: &str = "map.forge";
 pub const CMD_EXPORT_PNG: &str = "export.png";
 
 /// Bounded command bus. New capability = new variant + dispatch arm + test.
@@ -78,6 +80,10 @@ pub enum Command {
         segments: Option<usize>,
         output_layer: Option<String>,
     },
+    MapForge {
+        path: String,
+        live: bool,
+    },
     ExportPng {
         width: Option<u32>,
         height: Option<u32>,
@@ -102,7 +108,7 @@ pub async fn dispatch(cmd: Command) -> Value {
             "commands": [
                 CMD_STATUS, CMD_PROJECT_STATUS,
                 CMD_LAYER_ADD, CMD_LAYER_LIST, CMD_LAYER_REMOVE,
-                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_EXPORT_PNG,
+                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_MAP_FORGE, CMD_EXPORT_PNG,
             ],
             "agent_contract": "CLI-first: every command supports --json; `mcp` subcommand mirrors the same dispatch over stdio",
         }),
@@ -300,6 +306,63 @@ pub async fn dispatch(cmd: Command) -> Value {
                 "note": "Core validation ok: persistence performed by L2 store or app control handler"
             })
         }
+        Command::MapForge { path, live } => {
+            if path.trim().is_empty() {
+                return json!({"error": "invalid input: path must not be empty", "op": "map.forge"});
+            }
+            let text = match tokio::fs::read_to_string(path.trim()).await {
+                Ok(t) => t,
+                Err(e) => {
+                    return json!({"error": format!("read failed: {e}"), "op": "map.forge"});
+                }
+            };
+            let spec = match mapforge::parse_spec(&text) {
+                Ok(s) => s,
+                Err(e) => return json!({"error": e.to_string(), "op": "map.forge"}),
+            };
+            let plan = match mapforge::compile_plan(&spec) {
+                Ok(p) => p,
+                Err(e) => return json!({"error": e.to_string(), "op": "map.forge"}),
+            };
+            if !live {
+                return json!({
+                    "op": "map.forge",
+                    "slug": plan.slug,
+                    "title": plan.title,
+                    "bbox": plan.bbox,
+                    "layers": plan.layers,
+                    "live": false,
+                    "note": "dry-run: re-run with live=true to execute against overpass-api.de"
+                });
+            }
+            let mut executed: Vec<Value> = Vec::new();
+            for item in &plan.layers {
+                match overpass::execute_ql(&item.ql).await {
+                    Ok(hits) => {
+                        let count = hits.len();
+                        executed.push(json!({
+                            "id": item.id,
+                            "name": item.name,
+                            "key": item.key,
+                            "value": item.value,
+                            "count": count,
+                            "hits": hits,
+                        }));
+                    }
+                    Err(e) => {
+                        return json!({"error": e.to_string(), "op": "map.forge"});
+                    }
+                }
+            }
+            json!({
+                "op": "map.forge",
+                "slug": plan.slug,
+                "title": plan.title,
+                "bbox": plan.bbox,
+                "layers": executed,
+                "live": true,
+            })
+        }
         Command::ExportPng {
             width: _,
             height: _,
@@ -321,7 +384,7 @@ mod tests {
             .and_then(|c| c.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(cmds.len(), 11);
+        assert_eq!(cmds.len(), 12);
     }
 
     #[tokio::test]
@@ -410,6 +473,45 @@ mod tests {
             path: "definitely-not-here-xyz.geojson".to_string(),
             format: None,
             layer_id: None,
+        })
+        .await;
+        assert!(v
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("")
+            .contains("read failed"));
+    }
+
+    #[tokio::test]
+    async fn mapforge_dry_run_compiles_ql_offline() {
+        let mut p = std::env::temp_dir();
+        p.push(format!("qgis-test-forge-{}.json", std::process::id()));
+        let doc = r#"{"title":"Innere Stadt pharmacies","slug":"innere-stadt-pharmacies","bbox":{"south":48.195,"west":16.355,"north":48.225,"east":16.395},"layers":[{"id":"pharmacies","key":"amenity","value":"pharmacy"}]}"#;
+        if std::fs::write(&p, doc).is_err() {
+            return;
+        }
+        let v = dispatch(Command::MapForge {
+            path: p.to_string_lossy().to_string(),
+            live: false,
+        })
+        .await;
+        let _ = std::fs::remove_file(&p);
+        assert_eq!(v.get("live").and_then(|b| b.as_bool()), Some(false));
+        assert_eq!(
+            v.get("slug").and_then(|s| s.as_str()),
+            Some("innere-stadt-pharmacies")
+        );
+        assert_eq!(
+            v.get("layers").and_then(|l| l.as_array()).map(|a| a.len()),
+            Some(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn mapforge_missing_file_is_typed_error() {
+        let v = dispatch(Command::MapForge {
+            path: "definitely-not-here-forge-xyz.json".to_string(),
+            live: false,
         })
         .await;
         assert!(v

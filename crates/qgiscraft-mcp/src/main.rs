@@ -144,6 +144,19 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Forge a map from a MapSpec JSON file (dry-run builds QL; --live executes, keyless)
+    ForgeFromSpec {
+        #[arg(long)]
+        path: String,
+        #[arg(long)]
+        live: bool,
+        #[arg(long)]
+        ingest: bool,
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Run the MCP server over stdio (logs on stderr, JSON-RPC on stdout).
     /// With --connect PORT, the DB-touching tools run in the live app.
     Mcp {
@@ -438,6 +451,7 @@ fn tools_list() -> Value {
             {"name": "features.list", "description": "List ingested point features, optionally filtered to one layer (db optional)", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "db": {"type": "string"}}}},
             {"name": "layer.import", "description": "Import a GeoJSON/CSV file as a layer: format auto-detected by extension or explicit (geojson|csv); layer_id defaults to the file stem; persists to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "format": {"type": "string"}, "layer_id": {"type": "string"}, "db": {"type": "string"}}, "required": ["path"]}},
             {"name": "processing.buffer", "description": "Buffer point features of a layer into circle polygons: layer_id required; distance (meters, default 200.0), segments (8..256, default 24), output_layer, db optional", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "distance": {"type": "number"}, "segments": {"type": "integer"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["layer_id"]}},
+            {"name": "map.forge", "description": "Forge a map from a MapSpec JSON file: path required; live=false dry-runs QL per layer else executes; ingest=true writes live hits to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "live": {"type": "boolean"}, "ingest": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["path"]}},
             {"name": "export.png", "description": "Export map PNG (Phase 1 render path)", "inputSchema": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}}},
         ]
     })
@@ -633,6 +647,50 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
                 segments,
                 output_layer.as_deref(),
             )
+        }
+        "map.forge" => {
+            let live = args.get("live").and_then(|v| v.as_bool()).unwrap_or(false);
+            let ingest = args
+                .get("ingest")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let db = str_arg(args, "db");
+            if ingest && !live {
+                return json!({"content": [{"type": "text", "text": json!({"error": "invalid input: ingest requires live=true (nothing to ingest from a dry-run)", "op": "map.forge"}).to_string()}]});
+            }
+            let out = run(Command::MapForge {
+                path: str_arg(args, "path").unwrap_or_default(),
+                live,
+            });
+            if out.get("error").is_some() {
+                return out;
+            }
+            if ingest && live {
+                let slug = out
+                    .get("slug")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("mapforge")
+                    .to_string();
+                let mut ingested: Vec<Value> = Vec::new();
+                if let Some(layers) = out.get("layers").and_then(|v| v.as_array()) {
+                    for layer in layers {
+                        let id = layer.get("id").and_then(|v| v.as_str()).unwrap_or("layer");
+                        let name = layer.get("name").and_then(|v| v.as_str()).unwrap_or(id);
+                        let hits = layer.get("hits").cloned().unwrap_or(Value::Null);
+                        ingested.push(ingest_hits(
+                            db.as_deref(),
+                            id,
+                            name,
+                            format!("mapforge:{slug}").as_str(),
+                            "point",
+                            &hits,
+                            "map.forge",
+                        ));
+                    }
+                }
+                return json!({"content": [{"type": "text", "text": json!({"forge_result": out, "ingest": ingested}).to_string()}]});
+            }
+            out
         }
         "export.png" => run(Command::ExportPng {
             width: args
@@ -912,6 +970,54 @@ fn main() {
             );
             show(result, json, "processing.buffer");
         }
+        Commands::ForgeFromSpec {
+            path,
+            live,
+            ingest,
+            db,
+            json,
+        } => {
+            if ingest && !live {
+                show(
+                    json!({"error": "invalid input: ingest requires --live (nothing to ingest from a dry-run)", "op": "map.forge"}),
+                    json,
+                    "map.forge",
+                );
+            } else {
+                let out = run(Command::MapForge { path, live });
+                if out.get("error").is_some() || !(ingest && live) {
+                    show(out, json, "map.forge");
+                } else {
+                    let slug = out
+                        .get("slug")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("mapforge")
+                        .to_string();
+                    let mut ingested: Vec<Value> = Vec::new();
+                    if let Some(layers) = out.get("layers").and_then(|v| v.as_array()) {
+                        for layer in layers {
+                            let id = layer.get("id").and_then(|v| v.as_str()).unwrap_or("layer");
+                            let name = layer.get("name").and_then(|v| v.as_str()).unwrap_or(id);
+                            let hits = layer.get("hits").cloned().unwrap_or(Value::Null);
+                            ingested.push(ingest_hits(
+                                db.as_deref(),
+                                id,
+                                name,
+                                format!("mapforge:{slug}").as_str(),
+                                "point",
+                                &hits,
+                                "map.forge",
+                            ));
+                        }
+                    }
+                    show(
+                        json!({"forge_result": out, "ingest": ingested}),
+                        json,
+                        "map.forge",
+                    );
+                }
+            }
+        }
         Commands::Mcp { connect } => run_mcp_stdio(connect),
     }
 }
@@ -928,7 +1034,7 @@ mod tests {
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(tools.len(), 11);
+        assert_eq!(tools.len(), 12);
     }
 
     #[test]
@@ -948,6 +1054,35 @@ mod tests {
     fn layer_add_empty_id_is_typed_error() {
         let result = call_tool("layer.add", &json!({"id": "", "name": "x"}), None);
         assert!(content_text(&result).contains("invalid input"));
+    }
+
+    #[test]
+    fn map_forge_dry_run_returns_single_envelope() {
+        let mut p = std::env::temp_dir();
+        p.push(format!("qgiscraft-test-forge-{}.json", std::process::id()));
+        let doc = r#"{"title":"T","slug":"t-spot","bbox":{"south":48.19,"west":16.35,"north":48.23,"east":16.40},"layers":[{"id":"pharm","key":"amenity","value":"pharmacy"}]}"#;
+        if std::fs::write(&p, doc).is_err() {
+            return;
+        }
+        let result = call_tool(
+            "map.forge",
+            &json!({"path": p.to_string_lossy().to_string()}),
+            None,
+        );
+        let _ = std::fs::remove_file(&p);
+        let text = content_text(&result);
+        assert!(text.contains("t-spot"));
+        assert!(text.contains("out geom 100"));
+    }
+
+    #[test]
+    fn map_forge_ingest_without_live_is_typed_error() {
+        let result = call_tool(
+            "map.forge",
+            &json!({"path": "x.json", "live": false, "ingest": true}),
+            None,
+        );
+        assert!(content_text(&result).contains("ingest requires live"));
     }
 
     fn content_text(result: &Value) -> String {
