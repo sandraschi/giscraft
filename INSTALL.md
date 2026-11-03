@@ -1,4 +1,4 @@
-# Installing qgiscraft-mcp
+# Installing qgiscraft
 
 Pre-release: building from source is currently the only install path.
 No NSIS installer and no `.mcpb` bundle exist yet.
@@ -22,8 +22,8 @@ Install these if you don't have them already:
 ## Option A — Native app + CLI (recommended today)
 
 ```powershell
-git clone https://github.com/sandraschi/qgiscraft-mcp
-cd qgiscraft-mcp
+git clone https://github.com/sandraschi/qgiscraft
+cd qgiscraft
 $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
 cargo build -p qgiscraft-app -p qgiscraft-mcp
 .\target\debug\qgiscraft-app.exe
@@ -48,9 +48,9 @@ Build once (Option A), then register the server in
 {
   "mcpServers": {
     "qgiscraft": {
-      "command": "D:\\Dev\\repos\\qgiscraft-mcp\\target\\debug\\qgiscraft-mcp.exe",
+      "command": "D:\\Dev\\repos\\qgiscraft\\target\\debug\\qgiscraft-mcp.exe",
       "args": ["mcp"],
-      "env": { "QGISCRAFT_DB": "D:\\Dev\\repos\\qgiscraft-mcp\\qgiscraft.db" }
+      "env": { "QGISCRAFT_DB": "D:\\Dev\\repos\\qgiscraft\\qgiscraft.db" }
     }
   }
 }

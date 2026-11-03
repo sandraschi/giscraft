@@ -1,4 +1,4 @@
-# qgiscraft-mcp
+# qgiscraft
 
 QGIS-class GIS in pure Rust: clean-room 1:1 clone shell for QGIS muscle
 memory, modern core, CLI + MCP first. Native egui app, SQLite project file,

@@ -17,8 +17,8 @@ Verify: `cargo --version` (1.85+; workspace pins `Cargo.lock`).
 ## Setup
 
 ```powershell
-git clone https://github.com/sandraschi/qgiscraft-mcp
-cd qgiscraft-mcp
+git clone https://github.com/sandraschi/qgiscraft
+cd qgiscraft
 $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
 cargo test --workspace   # 56 tests, all offline
 ```
