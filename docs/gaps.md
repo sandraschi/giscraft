@@ -1,12 +1,12 @@
 # docs/gaps.md - ranked work list (v2.3: shared math, chrome, retry, dist)
 
 DONE:
-- Core `Command` bus (10 cmds) + validation hardening.
+- Core `Command` bus (12 cmds) + validation hardening.
 - Store SQLite: layers + features (+geom_json) + visible + counts + migrations + clear_all.
 - CLI/MCP `--db` persistence (add/list/remove roundtrip proven).
-- MCP stdio: 10 tools, typed schemas. `mcp --connect PORT` forwards the DB-touching tools to the live app; see `docs/control-protocol.md`.
+- MCP stdio: 12 tools, typed schemas. `mcp --connect PORT` forwards the DB-touching tools to the live app; see `docs/control-protocol.md`.
 - egui shell: DB-backed project, ear-clipped fills, per-layer palette, slippy zoom (wheel + Ctrl+wheel + pinch), pan, Fit data, F5 refresh.
-- Menus wired: Project, Layer, View, Help, Settings, Vector, Raster, Database, Web, Processing (all actions real, no dead buttons).
+- Menus wired: Project, Layer, View, Help, Settings, Vector, Raster, Database, Web, Processing (all actions real, no dead buttons); Edit holds a typed placeholder, Plugins holds real tools as they land (Show WKT, Zoom to coordinates first).
 - Vector: GeoJSON+CSV import (file picker, validated), GeoJSON export.
 - Raster/Web: XYZ tile layers from DB + preset gallery (OSM/HOT/Carto/Esri).
 - Database: scratch layers. Processing toolbox dock: search + 3 runnable algorithms + first real geoprocessing (buffer points).
@@ -35,3 +35,22 @@ NEXT (in sequence):
 9. OSM Austria PBF bulk loader.
 10. Async tile worker (replace 2-fetch/frame sync cap).
 11. Unify app + web BMP blit loops (math is shared; only the pixel-pushing differs - low priority).
+
+PLUGIN BACKLOG (capability, not code — per docs/plugins.md each lands as
+Command + MCP tool + CLI + real menu action; never vendor a plugin):
+Now (tiny, pure math, no new deps):
+- QuickWKT -> `wkt.show`: paste WKT, get a layer + auto fit. Highest agent value (agents think in WKT).
+- Lat Lon Tools -> zoom-to-coordinates dialog + copy canvas coords. Daily-use muscle memory.
+- QGIS "Create grid" -> `processing.grid`: rect + hex grids over a bbox.
+- NNJoin -> `processing.nearest`: nearest-feature join per layer (one SQL query on the store).
+- Shape Tools subset -> `processing.geodesic`: geodesic circles/ellipses, XY-to-line.
+Next (small, still keyless):
+- QuickMapServices -> XYZ preset gallery (tile engine exists; only presets + picker missing).
+- Spreadsheet Layers -> `layer.import` xlsx via calamine (pure Rust; POI datasets love xlsx).
+- ImportPhotos -> `photos.import`: EXIF GPS to point layer (feeds the walk-and-photo crossconnect).
+- MBTiles -> tile-cache source (MBTiles is SQLite; we already bundle rusqlite).
+Later (needs raster engine or sidecars):
+- Profile Tool + keyless SRTM downloader (needs DEM sampler first).
+- WhiteboxTools as opt-in sidecar (fits the "GRASS/SAGA via MCP sidecars" slot; nothing GPL in core).
+- Routing (ORS et al.): deferred indefinitely — all options need API keys or self-host. Keyless rule wins.
+Never: API-keyed panels (MapTiler, StreetView, TravelTime), Mergin/QField sync, PyQGIS compat.
