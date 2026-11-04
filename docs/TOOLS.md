@@ -1,4 +1,4 @@
-# Tool Reference (15 MCP tools + matching CLI)
+# Tool Reference (18 MCP tools + matching CLI)
 
 `mcp --connect PORT` drives the running app (`qgiscraft-app -- --control PORT`)
 for the DB-touching tools, so there is a single writer. See
@@ -24,11 +24,14 @@ stdio, MCP 2024-11-05, `initialize` / `tools/list` / `tools/call` / `ping`.
 | `wkt.show` | `wkt` | `layer_id`, `db` | WKT string (POINT/LINESTRING/POLYGON + MULTI, 2D only) as a layer; persists to DB |
 | `processing.grid` | `south`, `west`, `north`, `east` | `cell_size` (meters, def 500), `hex`, `output_layer`, `db` | Rect or hex grid over a bbox (cap 10k cells); persists to DB |
 | `processing.nearest` | `source_layer`, `target_layer` | `output_layer`, `db` | Hub lines from each source feature to its closest target feature; persists to DB |
+| `processing.geodesic` | `shape`, `lng`, `lat` | `radius_m` (circle), `major_m`/`minor_m`/`bearing_deg` (ellipse), `lng2`/`lat2` (line), `segments`, `output_layer`, `db` | True-distance circle/ellipse/line at a center point; persists to DB |
+| `layer.color` | `id` | `color` (#rrggbb, empty clears to palette), `db` | Set a layer's display color; persists to DB |
+| `doppler.locate` | `path` | `south`/`west`/`north`/`east` (required with path), `step_deg`, `top_n`, `terrain_m`, `output_layer`, `db` | Rank grid candidates by matching Doppler curves to ADS-B tracks; persists top hits to DB |
 | `export.png` | — | `width`, `height` | Typed `unsupported` until the render path lands (Phase 1+) |
 
 CLI equivalents: `status`, `project-status`, `layer-add`, `layer-list`, `layer-import`,
 `layer-remove`, `geocode-search [--live]`, `overpass-query [--live] [--ingest] [--db]`,
-`features-list`, `processing-buffer`, `processing-grid --south --west --north --east [--cell-size] [--hex]`, `processing-nearest --source-layer --target-layer`, `forge-from-spec --path SPEC [--live] [--ingest] [--db]`, `wkt-show --wkt GEOM [--layer-id] [--db]`, plus `mcp` (serve, `--connect` for the live app). Per-command `--db` overrides
+`features-list`, `processing-buffer`, `processing-grid --south --west --north --east [--cell-size] [--hex]`, `processing-nearest --source-layer --target-layer`, `processing-geodesic --shape circle --lng --lat --radius_m`, `layer-color --id --color`, `doppler-locate --path --south --west --north --east`, `forge-from-spec --path SPEC [--live] [--ingest] [--db]`, `wkt-show --wkt GEOM [--layer-id] [--db]`, plus `mcp` (serve, `--connect` for the live app). Per-command `--db` overrides
 `$QGISCRAFT_DB`, default `./qgiscraft.db`. Forge depot `depot/maps/*/spec.json` checked by `cargo run -p xtask -- forge`.
 
 Hostile input (empty ids, injection in tag keys, out-of-range limits/bbox)

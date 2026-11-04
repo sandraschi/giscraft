@@ -22,7 +22,7 @@ DONE:
 - Overpass retries (3 attempts, backoff) on 502/503/429/timeouts; public-API flakiness no longer kills a demo.
 - Canvas chrome: scale bar (nice 1/2/5 m/km), north arrow, per-layer color dots in dock, live `1:N + bar` readout.
 - `just dist`: naked-PC zip (release exes + README/INSTALL/CHANGELOG + START-HERE).
-- Plugin reimplementations shipped: QuickWKT -> `wkt.show` (paste WKT -> layer + fit, single + multi, 2D), Lat Lon Tools zoom -> Plugins "Zoom to coordinates" (`geo::parse_latlng`, N/S/E/W; copy-coords still open), QGIS "Create grid" -> `processing.grid` (rect/hex, 10k cap), NNJoin -> `processing.nearest` (hub lines with distances).
+- Plugin reimplementations shipped: QuickWKT -> `wkt.show` (paste WKT -> layer + fit, single + multi, 2D), Lat Lon Tools zoom -> Plugins "Zoom to coordinates" (`geo::parse_latlng`, N/S/E/W; copy-coords still open), QGIS "Create grid" -> `processing.grid` (rect/hex, 10k cap), NNJoin -> `processing.nearest` (hub lines with distances), Shape Tools -> `processing.geodesic` (true-distance circle/ellipse/line), single-symbol color -> `layer.color` (#rrggbb per layer, styled in dock/canvas/preview/web), colsto geolocation -> `doppler.locate` MVP (offline curve-vs-track rank -> scored layer; no 920s gap filter yet).
 
 NEXT (in sequence):
 1. First oracle pass: canvas nav bindings (wheel/Ctrl+wheel/drag/box), menu inventory, per plan/qgis/02-ui-ux.md.
@@ -39,8 +39,8 @@ NEXT (in sequence):
 
 PLUGIN BACKLOG (capability, not code — per docs/plugins.md each lands as
 Command + MCP tool + CLI + real menu action; never vendor a plugin):
-Now (tiny, pure math, no new deps — QuickWKT, Lat Lon zoom, grid, NNJoin done):
-- Shape Tools subset -> `processing.geodesic`: geodesic circles/ellipses, XY-to-line.
+Now (tiny, pure math, no new deps — all shipped: QuickWKT, Lat Lon zoom, grid, NNJoin, geodesic, single-symbol color):
+- Next shape work is ellipse UX polish only (presets, not new math).
 Next (small, still keyless):
 - QuickMapServices -> XYZ preset gallery (tile engine exists; only presets + picker missing).
 - Spreadsheet Layers -> `layer.import` xlsx via calamine (pure Rust; POI datasets love xlsx).

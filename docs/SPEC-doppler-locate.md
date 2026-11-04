@@ -1,6 +1,6 @@
 # SPEC: doppler.locate — plane-noise geolocation (offline-first)
 
-Status: draft for review, no code yet.
+Status: v1 shipped (offline matcher: parse + forward model + correlation rank + top-N scored layer). No 920s gap negative-evidence filter yet; single-capture JSON in; emission clamped to track ends. See CHANGELOG (plugins round 2) for the gate record.
 Source story: colsto "I discovered a sound that leaks your exact location (and it's everywhere)" https://www.youtube.com/watch?v=UytYrhYLOKI — blurry trees/riverbank clip, no GIS metadata, no landmarks, dated Sept 8, continental US. Two inaudible prop-plane Doppler curves 920s apart matched vs ADS-B to ~100m.
 
 ## Why this belongs in qgiscraft

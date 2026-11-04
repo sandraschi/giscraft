@@ -1,5 +1,11 @@
 # Changelog - qgiscraft
 
+## Unreleased - plugins round 2: geodesic + layer.color + doppler.locate (18 tools)
+- New `processing.geodesic` tool + CLI: true-distance circle/ellipse/line (geodesic vertices via `destination_point`, densified XY-to-line), persists via `ingest_hits`. Completes the Now plugin backlog (QuickWKT, coords, grid, NNJoin, geodesic all shipped).
+- New `layer.color` tool + CLI + app styling picker: per-layer `#rrggbb` persisted in a new `layers.color` column (migration included, empty = palette default), honored by canvas, headless BMP, web preview, and `/api/layers`. Styling panel: picker for the selected layer + reset-to-palette; `layer.color` also works over MCP connect (control arm refreshes the live app).
+- New `doppler.locate` MVP (colsto method): offline curve-vs-track matcher — sound-travel iteration, terrain-corrected range, normalized shape correlation, grid rank to top-N scored points. Caveats documented: no 920s gap negative-evidence filter yet, single-capture JSON in, emission clamped to track ends.
+- Gates: core 80 + mcp 28 green (geodesic/doppler hostile tests, dispatch + persist + stdio probes for grid/geodesic/doppler); full workspace link still blocked by the running app exe — close/reopen to pick up the new build.
+
 ## Unreleased - processing.grid + processing.nearest (grid hexagons, NNJoin hub lines)
 - New `processing.grid` tool + CLI (15 tools total): rect/hex grids over a bbox (10k cell cap, geodesic hex vertices via `destination_point`, auto-closed rings), persists polygons; dry-run is the compute (no live needed). New `processing.nearest` tool + CLI: hub LineStrings from each source feature to its closest target (haversine, 1M pair cap, "A -> B (312 m)" names), persists lines. Backed by pure `processing::grid_features` / `nearest_join` + dispatch validation; L2/app own persistence.
 - Toolbox: "Create grid" (prefills canvas bbox, hex checkbox) + "Nearest neighbor join" (source prefilled from selection) dialogs; both persist + auto-fit + log like the other algorithms.

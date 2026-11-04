@@ -28,7 +28,11 @@ box-zoom, `commands --json`, kittest goldens never existed).
 - [x] command wkt.show present (QuickWKT parity: paste WKT -> layer + fit)
 - [x] command processing.grid present (Create grid parity: rect/hex over bbox)
 - [x] command processing.nearest present (NNJoin parity: hub lines to closest)
-- [x] Processing Toolbox: Download, Geocode, Buffer, Create grid, Nearest join (search filters, each opens its dialog)
+- [x] command processing.geodesic present (Shape Tools parity: true-distance circle/ellipse/line)
+- [x] command layer.color present (single-symbol styling parity: #rrggbb per layer, palette fallback)
+- [x] command doppler.locate present (colsto method MVP: offline curve-vs-track rank -> scored layer)
+- [x] Processing Toolbox: Download, Geocode, Buffer, Create grid, Nearest join, Geodesic shape, Doppler locate (search filters, each opens its dialog)
+- [x] Layer Styling: single-symbol color picker for the selected layer + reset to palette
 - [x] Plugins menu: Show WKT + Zoom to coordinates dialogs (first real plugin capabilities)
 - [x] forge depot: `depot/maps/*/spec.json` (pharmacies + bikeshops), checked by `cargo run -p xtask -- forge`
 - [x] command export.png present (typed unsupported, render path Phase 1+)

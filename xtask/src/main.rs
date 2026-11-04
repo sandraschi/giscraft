@@ -102,6 +102,9 @@ fn parity() -> i32 {
         "wkt.show",
         "processing.grid",
         "processing.nearest",
+        "processing.geodesic",
+        "layer.color",
+        "doppler.locate",
         "export.png",
     ] {
         if !lib.contains(cmd) {
@@ -114,7 +117,7 @@ fn parity() -> i32 {
         }
     }
     if missing == 0 {
-        println!("xtask parity: ok (13 commands present)");
+        println!("xtask parity: ok (16 commands present)");
         0
     } else {
         1
