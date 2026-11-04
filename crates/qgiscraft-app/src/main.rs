@@ -127,6 +127,7 @@ struct LayerRow {
     source: String,
     geom_type: String,
     visible: bool,
+    color: String,
     features: u64,
 }
 
@@ -277,6 +278,7 @@ impl QgisCraftApp {
                                     source: l.source,
                                     geom_type: l.geom_type,
                                     visible: l.visible,
+                                    color: l.color,
                                     features: n,
                                 }
                             })
@@ -299,6 +301,11 @@ impl QgisCraftApp {
             .find(|l| l.id == layer_id)
             .map(|l| l.visible)
             .unwrap_or(false)
+    }
+
+    /// Canvas color: stored #rrggbb wins, else the deterministic palette.
+    fn layer_draw_color(&self, layer_id: &str) -> egui::Color32 {
+        layer_draw_color(&self.layers, layer_id)
     }
 }
 
@@ -331,6 +338,17 @@ fn slug(name: &str) -> String {
 fn layer_color(id: &str) -> egui::Color32 {
     let (r, g, b) = tiles::layer_color(id);
     egui::Color32::from_rgb(r, g, b)
+}
+
+/// Stored #rrggbb wins; empty falls back to the palette. Shared by the
+/// canvas (via the method above) and the headless BMP renderer.
+fn layer_draw_color(layers: &[LayerRow], id: &str) -> egui::Color32 {
+    if let Some(l) = layers.iter().find(|l| l.id == id) {
+        if let Ok(Some((r, g, b))) = tiles::parse_layer_color(&l.color) {
+            return egui::Color32::from_rgb(r, g, b);
+        }
+    }
+    layer_color(id)
 }
 
 /// True when (lng, lat) is within `tol` degrees of a polyline
@@ -604,6 +622,7 @@ impl QgisCraftApp {
                     geom_type: geom_type.to_string(),
                     crs: "EPSG:4326".to_string(),
                     visible: true,
+                    color: String::new(),
                 };
                 match store::add_layer(&conn, &layer)
                     .and_then(|()| store::replace_features(&conn, layer_id, &rows).map(|_| ()))
@@ -674,6 +693,7 @@ impl QgisCraftApp {
                     geom_type: "polygon".to_string(),
                     crs: "EPSG:4326".to_string(),
                     visible: true,
+                    color: String::new(),
                 };
                 match store::add_layer(&conn, &layer)
                     .and_then(|()| store::replace_features(&conn, &layer_id, &rows).map(|_| ()))
@@ -745,6 +765,7 @@ impl QgisCraftApp {
                                 geom_type: "line".to_string(),
                                 crs: "EPSG:4326".to_string(),
                                 visible: true,
+                                color: String::new(),
                             };
                             match store::add_layer(&conn, &layer).and_then(|()| {
                                 store::replace_features(&conn, &out_id, &rows).map(|_| ())
@@ -874,6 +895,7 @@ impl QgisCraftApp {
                     geom_type: geom_kind.to_string(),
                     crs: "EPSG:4326".to_string(),
                     visible: true,
+                    color: String::new(),
                 };
                 match store::add_layer(&conn, &layer)
                     .and_then(|()| store::replace_features(&conn, &layer_id, &rows).map(|_| ()))
@@ -947,6 +969,7 @@ impl QgisCraftApp {
                     geom_type: geom_type.to_string(),
                     crs: "EPSG:4326".to_string(),
                     visible: true,
+                    color: String::new(),
                 };
                 match store::add_layer(&conn, &layer) {
                     Ok(()) => {
@@ -1085,6 +1108,7 @@ impl QgisCraftApp {
                     geom_type: "raster".to_string(),
                     crs: "EPSG:3857".to_string(),
                     visible: true,
+                    color: String::new(),
                 };
                 match store::add_layer(&conn, &layer) {
                     Ok(()) => format!("xyz layer {id} added"),
@@ -1140,6 +1164,7 @@ impl QgisCraftApp {
                     geom_type: "raster".to_string(),
                     crs: "EPSG:3857".to_string(),
                     visible: true,
+                    color: String::new(),
                 };
                 match store::add_layer(&conn, &layer) {
                     Ok(()) => {
@@ -1332,6 +1357,7 @@ impl QgisCraftApp {
                                 geom_type: "point".to_string(),
                                 crs: "EPSG:4326".to_string(),
                                 visible: true,
+                                color: String::new(),
                             };
                             match store::add_layer(&conn, &layer).and_then(|()| {
                                 store::replace_features(
@@ -1870,6 +1896,25 @@ impl QgisCraftApp {
                     Err(e) => serde_json::json!({"error": e.to_string()}),
                 }
             }
+            "layer.color" => {
+                let id = str_param("id");
+                let color = str_param("color");
+                if id.trim().is_empty() {
+                    return serde_json::json!({"error": "invalid params: id required"});
+                }
+                match tiles::parse_layer_color(&color) {
+                    Err(e) => serde_json::json!({"error": e.to_string()}),
+                    Ok(_) => match store::open_default()
+                        .and_then(|c| store::set_color(&c, id.as_str(), color.trim()))
+                    {
+                        Ok(updated) => {
+                            self.refresh();
+                            serde_json::json!({"id": id, "color": color.trim(), "updated": updated})
+                        }
+                        Err(e) => serde_json::json!({"error": e.to_string()}),
+                    },
+                }
+            }
             "ui.inspect" => {
                 let canvas = self
                     .last_rect
@@ -1926,6 +1971,7 @@ impl QgisCraftApp {
                                     source: l.source,
                                     geom_type: l.geom_type,
                                     visible: l.visible,
+                                    color: l.color,
                                     features: n,
                                 }
                             })
@@ -2338,7 +2384,7 @@ impl eframe::App for QgisCraftApp {
                     continue;
                 };
                 ui.horizontal(|ui| {
-                    ui.colored_label(layer_color(&id), "●");
+                    ui.colored_label(self.layer_draw_color(&id), "●");
                     if ui.checkbox(&mut visible, name.as_str()).changed() {
                         toggle = Some((id.clone(), visible));
                     }
@@ -2396,7 +2442,41 @@ impl eframe::App for QgisCraftApp {
         // Right: Layer Styling + Processing Toolbox (QGIS default right stack)
         egui::Panel::right("styling_processing").show(ui, |ui| {
             ui.heading("Layer Styling");
-            ui.label("Single / Categorized / Graduated (Phase 1)");
+            if let Some(id) = self.selected.clone() {
+                let stored = self
+                    .layers
+                    .iter()
+                    .find(|l| l.id == id)
+                    .map(|l| l.color.clone())
+                    .unwrap_or_default();
+                let (r, g, b) = tiles::parse_layer_color(&stored)
+                    .unwrap_or(None)
+                    .unwrap_or_else(|| tiles::layer_color(&id));
+                let mut rgb = [r, g, b];
+                ui.label(format!("Single symbol: {id}"));
+                if ui.color_edit_button_srgb(&mut rgb).changed() {
+                    let hex = format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]);
+                    match store::open_default().and_then(|c| store::set_color(&c, &id, &hex)) {
+                        Ok(true) => {
+                            self.refresh();
+                            self.push_log(format!("color {id} -> {hex}"));
+                        }
+                        Ok(false) => self.push_log("color failed: no such layer".to_string()),
+                        Err(e) => self.push_log(format!("color failed: {e}")),
+                    }
+                }
+                if !stored.is_empty() && ui.button("Reset to palette").clicked() {
+                    match store::open_default().and_then(|c| store::set_color(&c, &id, "")) {
+                        Ok(_) => {
+                            self.refresh();
+                            self.push_log(format!("color {id} reset to palette"));
+                        }
+                        Err(e) => self.push_log(format!("color failed: {e}")),
+                    }
+                }
+            } else {
+                ui.label("Select a layer to style its symbol color.");
+            }
             ui.separator();
             ui.heading("Processing Toolbox");
             ui.text_edit_singleline(&mut self.toolbox_query);
@@ -2600,7 +2680,7 @@ impl eframe::App for QgisCraftApp {
                 if !self.is_visible(feat.layer_id.as_str()) {
                     continue;
                 }
-                let color = layer_color(feat.layer_id.as_str());
+                let color = self.layer_draw_color(feat.layer_id.as_str());
                 let selected = self.selected.as_ref() == Some(&feat.layer_id);
                 match parse_geom(feat) {
                     Some(Geom::Poly(ring)) => {
@@ -3051,8 +3131,8 @@ fn render_preview(
         if !vis {
             continue;
         }
-        // Same palette as the canvas; DDA outlines, earcut fills.
-        let c = layer_color(feat.layer_id.as_str());
+        // Stored color wins, else the palette (same rule as the canvas).
+        let c = layer_draw_color(layers, feat.layer_id.as_str());
         let (cr, cg, cb) = (c.r(), c.g(), c.b());
         match parse_geom(feat) {
             Some(Geom::Poly(ring)) => {
@@ -3288,6 +3368,7 @@ mod tests {
             source: "osm".to_string(),
             geom_type: "point".to_string(),
             visible: true,
+            color: String::new(),
             features: 2,
         }]
     }
@@ -3332,6 +3413,25 @@ mod tests {
     #[test]
     fn fit_view_only_unknown_layer_is_none() {
         assert!(fit_view(&test_features(), &test_layers(), 800.0, 600.0, Some("nope")).is_none());
+    }
+
+    #[test]
+    fn stored_color_overrides_palette() {
+        let plain = test_layers();
+        let palette = layer_draw_color(&plain, "rx");
+        assert_eq!(palette, layer_color("rx"));
+        let mut styled = test_layers();
+        if let Some(l) = styled.first_mut() {
+            l.color = "#ff0000".to_string();
+        }
+        let custom = layer_draw_color(&styled, "rx");
+        assert_eq!(custom, egui::Color32::from_rgb(255, 0, 0));
+        assert_ne!(custom, palette);
+        if let Some(l) = styled.first_mut() {
+            l.color = "junk".to_string();
+        }
+        assert_eq!(layer_draw_color(&styled, "rx"), layer_color("rx"));
+        assert_eq!(layer_draw_color(&styled, "missing"), layer_color("missing"));
     }
 
     #[test]
@@ -3426,6 +3526,7 @@ mod tests {
                 source: "osm".to_string(),
                 geom_type: "point".to_string(),
                 visible,
+                color: String::new(),
                 features: features.len() as u64,
             }],
             features,
