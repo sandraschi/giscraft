@@ -16,6 +16,8 @@ pub struct StoredLayer {
     pub geom_type: String,
     pub crs: String,
     pub visible: bool,
+    /// Display color as `#rrggbb`. Empty = deterministic palette by id.
+    pub color: String,
 }
 
 /// One ingested point feature. Overpass hits land here via `replace_features`.
@@ -47,6 +49,7 @@ impl StoredLayer {
             geom_type: geom_type.unwrap_or_else(|| "point".to_string()),
             crs: crs.unwrap_or_else(|| "EPSG:4326".to_string()),
             visible: true,
+            color: String::new(),
         }
     }
 }
@@ -76,7 +79,8 @@ pub fn init_db(conn: &Connection) -> Result<(), StoreError> {
             source TEXT NOT NULL,
             geom_type TEXT NOT NULL DEFAULT 'point',
             crs TEXT NOT NULL DEFAULT 'EPSG:4326',
-            visible INTEGER NOT NULL DEFAULT 1
+            visible INTEGER NOT NULL DEFAULT 1,
+            color TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS features (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,6 +99,7 @@ pub fn init_db(conn: &Connection) -> Result<(), StoreError> {
         "ALTER TABLE layers ADD COLUMN geom_type TEXT NOT NULL DEFAULT 'point'",
         "ALTER TABLE layers ADD COLUMN crs TEXT NOT NULL DEFAULT 'EPSG:4326'",
         "ALTER TABLE layers ADD COLUMN visible INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE layers ADD COLUMN color TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE features ADD COLUMN geom_json TEXT",
     ] {
         match conn.execute_batch(alter) {
@@ -120,14 +125,15 @@ pub fn add_layer(conn: &Connection, layer: &StoredLayer) -> Result<(), StoreErro
         ));
     }
     conn.execute(
-        "INSERT OR REPLACE INTO layers (id, name, source, geom_type, crs, visible) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT OR REPLACE INTO layers (id, name, source, geom_type, crs, visible, color) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             layer.id,
             layer.name,
             layer.source,
             layer.geom_type,
             layer.crs,
-            layer.visible as i64
+            layer.visible as i64,
+            layer.color
         ],
     )
     .map_err(|e| StoreError::Sql(e.to_string()))?;
@@ -136,11 +142,12 @@ pub fn add_layer(conn: &Connection, layer: &StoredLayer) -> Result<(), StoreErro
 
 pub fn list_layers(conn: &Connection) -> Result<Vec<StoredLayer>, StoreError> {
     let mut stmt = conn
-        .prepare("SELECT id, name, source, geom_type, crs, visible FROM layers ORDER BY id")
+        .prepare("SELECT id, name, source, geom_type, crs, visible, color FROM layers ORDER BY id")
         .map_err(|e| StoreError::Sql(e.to_string()))?;
     let rows = stmt
         .query_map([], |row| {
             let visible: i64 = row.get(5)?;
+            let color: Option<String> = row.get(6).unwrap_or(None);
             Ok(StoredLayer {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -148,6 +155,7 @@ pub fn list_layers(conn: &Connection) -> Result<Vec<StoredLayer>, StoreError> {
                 geom_type: row.get(3)?,
                 crs: row.get(4)?,
                 visible: visible != 0,
+                color: color.unwrap_or_default(),
             })
         })
         .map_err(|e| StoreError::Sql(e.to_string()))?;
@@ -195,6 +203,33 @@ pub fn set_visible(conn: &Connection, id: &str, visible: bool) -> Result<bool, S
         .execute(
             "UPDATE layers SET visible = ?1 WHERE id = ?2",
             params![visible as i64, id],
+        )
+        .map_err(|e| StoreError::Sql(e.to_string()))?;
+    Ok(n > 0)
+}
+
+/// Set a layer's display color (`#rrggbb`; empty clears to the palette).
+/// True when the id exists. Hex is validated so the DB never holds junk.
+pub fn set_color(conn: &Connection, id: &str, color: &str) -> Result<bool, StoreError> {
+    if id.trim().is_empty() {
+        return Err(StoreError::InvalidInput("id must not be empty".to_string()));
+    }
+    let color = color.trim();
+    if !color.is_empty() {
+        let bytes = color.as_bytes();
+        let hex_ok = bytes.len() == 7
+            && bytes[0] == b'#'
+            && bytes[1..].iter().all(|b| b.is_ascii_hexdigit());
+        if !hex_ok {
+            return Err(StoreError::InvalidInput(
+                "color must be #rrggbb or empty".to_string(),
+            ));
+        }
+    }
+    let n = conn
+        .execute(
+            "UPDATE layers SET color = ?1 WHERE id = ?2",
+            params![color, id],
         )
         .map_err(|e| StoreError::Sql(e.to_string()))?;
     Ok(n > 0)
@@ -536,6 +571,31 @@ mod tests {
             if let Ok(layers) = listed {
                 assert!(!layers[0].visible);
             }
+        }
+    }
+
+    #[test]
+    fn color_roundtrip_and_hex_fence() {
+        let conn_opt = Connection::open_in_memory().ok();
+        assert!(conn_opt.is_some());
+        if let Some(conn) = conn_opt {
+            assert!(init_db(&conn).is_ok());
+            let layer = StoredLayer::new("c".to_string(), "C".to_string(), None, None, None);
+            assert!(add_layer(&conn, &layer).is_ok());
+            assert!(set_color(&conn, "c", "#ff0000").is_ok());
+            let listed = list_layers(&conn);
+            if let Ok(layers) = listed {
+                assert_eq!(layers[0].color, "#ff0000");
+            }
+            assert!(set_color(&conn, "c", "red").is_err());
+            assert!(set_color(&conn, "c", "#gggggg").is_err());
+            assert!(set_color(&conn, "c", "#fff").is_err());
+            assert!(set_color(&conn, "c", "").is_ok());
+            assert!(list_layers(&conn).is_ok());
+            if let Ok(layers) = list_layers(&conn) {
+                assert!(layers[0].color.is_empty());
+            }
+            assert!(set_color(&conn, "nope", "#00ff00").is_ok());
         }
     }
 }

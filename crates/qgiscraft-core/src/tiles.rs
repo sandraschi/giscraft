@@ -304,6 +304,30 @@ pub fn layer_color(id: &str) -> (u8, u8, u8) {
     (c[0], c[1], c[2])
 }
 
+/// Parse a `#rrggbb` display color. Empty means "palette default" and
+/// parses to `None`; anything else malformed is a typed error.
+pub fn parse_layer_color(text: &str) -> Result<Option<(u8, u8, u8)>, crate::error::GisError> {
+    use crate::error::GisError;
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let bytes = trimmed.as_bytes();
+    let hex_ok =
+        bytes.len() == 7 && bytes[0] == b'#' && bytes[1..].iter().all(|b| b.is_ascii_hexdigit());
+    if !hex_ok {
+        return Err(GisError::InvalidInput(
+            "color must be #rrggbb or empty".to_string(),
+        ));
+    }
+    let hex = |i: usize| {
+        let s = &trimmed[i..i + 2];
+        u8::from_str_radix(s, 16)
+            .map_err(|_| GisError::InvalidInput("color must be #rrggbb or empty".to_string()))
+    };
+    Ok(Some((hex(1)?, hex(3)?, hex(5)?)))
+}
+
 /// XYZ tile URL template (`{z}/{x}/{y}` placeholders).
 /// Override with `QGISCRAFT_TILES_URL` (e.g. a local mirror or style).
 /// No network here: pure string handling, so tests stay offline.
@@ -580,5 +604,22 @@ mod tests {
         assert!((dist_to_segment_deg(0.5, 1.0, 0.0, 0.0, 1.0, 0.0) - 1.0).abs() < 1e-9);
         assert!(dist_to_segment_deg(2.0, 0.0, 0.0, 0.0, 1.0, 0.0) > 0.9);
         assert!(dist_to_segment_deg(5.0, 5.0, 5.0, 5.0, 5.0, 5.0) < 1e-12);
+    }
+
+    #[test]
+    fn layer_color_hex_parses_and_rejects() {
+        assert_eq!(parse_layer_color("").unwrap_or(Some((9, 9, 9))), None);
+        assert_eq!(
+            parse_layer_color("#ff0000").unwrap_or(None),
+            Some((255, 0, 0))
+        );
+        assert_eq!(
+            parse_layer_color("  #00FF00 ").unwrap_or(None),
+            Some((0, 255, 0))
+        );
+        assert!(parse_layer_color("red").is_err());
+        assert!(parse_layer_color("#fff").is_err());
+        assert!(parse_layer_color("#gggggg").is_err());
+        assert!(parse_layer_color("#ff00000").is_err());
     }
 }

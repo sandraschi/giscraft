@@ -42,6 +42,7 @@ pub const CMD_WKT_SHOW: &str = "wkt.show";
 pub const CMD_PROCESSING_GRID: &str = "processing.grid";
 pub const CMD_PROCESSING_NEAREST: &str = "processing.nearest";
 pub const CMD_PROCESSING_GEODESIC: &str = "processing.geodesic";
+pub const CMD_LAYER_COLOR: &str = "layer.color";
 pub const CMD_EXPORT_PNG: &str = "export.png";
 
 /// Bounded command bus. New capability = new variant + dispatch arm + test.
@@ -120,6 +121,10 @@ pub enum Command {
         segments: Option<usize>,
         output_layer: Option<String>,
     },
+    LayerColor {
+        layer_id: String,
+        color: Option<String>,
+    },
     ExportPng {
         width: Option<u32>,
         height: Option<u32>,
@@ -144,7 +149,7 @@ pub async fn dispatch(cmd: Command) -> Value {
             "commands": [
                 CMD_STATUS, CMD_PROJECT_STATUS,
                 CMD_LAYER_ADD, CMD_LAYER_LIST, CMD_LAYER_REMOVE,
-                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_MAP_FORGE, CMD_WKT_SHOW,                 CMD_PROCESSING_GRID, CMD_PROCESSING_NEAREST, CMD_PROCESSING_GEODESIC, CMD_EXPORT_PNG,
+                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_MAP_FORGE, CMD_WKT_SHOW,                 CMD_PROCESSING_GRID, CMD_PROCESSING_NEAREST, CMD_PROCESSING_GEODESIC, CMD_LAYER_COLOR, CMD_EXPORT_PNG,
             ],
             "agent_contract": "CLI-first: every command supports --json; `mcp` subcommand mirrors the same dispatch over stdio",
         }),
@@ -604,6 +609,21 @@ pub async fn dispatch(cmd: Command) -> Value {
                 "hits": [{"name": out_id, "kind": "way", "lng": cx, "lat": cy, "geom": serde_json::from_str::<Value>(&geojson).unwrap_or(Value::Null)}],
             })
         }
+        Command::LayerColor { layer_id, color } => {
+            if layer_id.trim().is_empty() {
+                return json!({"error": "invalid input: layer_id must not be empty", "op": "layer.color"});
+            }
+            let want = color.unwrap_or_default();
+            if tiles::parse_layer_color(&want).is_err() {
+                return json!({"error": "invalid input: color must be #rrggbb or empty", "op": "layer.color"});
+            }
+            json!({
+                "op": "layer.color",
+                "layer_id": layer_id,
+                "color": want,
+                "note": "Core validation ok: persistence performed by L2 store or app control handler"
+            })
+        }
         Command::ExportPng {
             width: _,
             height: _,
@@ -625,7 +645,29 @@ mod tests {
             .and_then(|c| c.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(cmds.len(), 16);
+        assert_eq!(cmds.len(), 17);
+    }
+
+    #[tokio::test]
+    async fn layer_color_validates() {
+        let v = dispatch(Command::LayerColor {
+            layer_id: "pharms".to_string(),
+            color: Some("#ff0000".to_string()),
+        })
+        .await;
+        assert_eq!(v.get("color").and_then(|s| s.as_str()), Some("#ff0000"));
+        let bad = dispatch(Command::LayerColor {
+            layer_id: "pharms".to_string(),
+            color: Some("red".to_string()),
+        })
+        .await;
+        assert!(bad.get("error").is_some());
+        let empty = dispatch(Command::LayerColor {
+            layer_id: " ".to_string(),
+            color: None,
+        })
+        .await;
+        assert!(empty.get("error").is_some());
     }
 
     #[tokio::test]
