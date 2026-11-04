@@ -149,6 +149,7 @@ struct QgisCraftApp {
     fit_only: Option<String>,
     confirm_new: bool,
     show_about: bool,
+    show_help: bool,
     show_settings: bool,
     dialog: Dialog,
     toolbox_query: String,
@@ -226,6 +227,7 @@ impl QgisCraftApp {
             fit_only: None,
             confirm_new: false,
             show_about: false,
+            show_help: false,
             show_settings: false,
             dialog: Dialog::None,
             toolbox_query: String::new(),
@@ -2336,6 +2338,10 @@ impl eframe::App for QgisCraftApp {
                     }
                 });
                 ui.menu_button("Help", |ui| {
+                    if ui.button("QGISCraft Handbook & GIS Guide...").clicked() {
+                        self.show_help = true;
+                    }
+                    ui.separator();
                     if ui.button("About qgiscraft").clicked() {
                         self.show_about = true;
                     }
@@ -2439,6 +2445,52 @@ impl eframe::App for QgisCraftApp {
                 });
             });
         });
+        if self.show_help {
+            egui::Window::new("📖 QGISCraft Comprehensive Handbook & Spatial Guide")
+                .min_width(680.0)
+                .min_height(480.0)
+                .show(ui.ctx(), |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.heading("1. What is GIS? (Geographic Information Systems)");
+                        ui.label("A Geographic Information System (GIS) captures, stores, analyzes, and visualizes spatial data on Earth.");
+                        ui.label("• Vector Data: Points (POIs), Linestrings (roads/trails), Polygons (districts, borders, water).");
+                        ui.label("• Raster Data: Map tiles, elevation DEMs, satellite imagery (Web Mercator EPSG:3857).");
+                        ui.label("• CRS (Coordinate Reference System): EPSG:4326 (WGS84 GPS degrees) reprojected to EPSG:3857.");
+
+                        ui.add_space(8.0);
+                        ui.heading("2. What is QGIS & Who Uses It?");
+                        ui.label("QGIS is the global standard open-source GIS desktop suite (the sovereign counterpart to Esri ArcGIS).");
+                        ui.label("Used worldwide by urban planners, civil engineers, foresters, environmental scientists,");
+                        ui.label("disaster response teams (Humanitarian OSM), intelligence analysts, and outdoor explorers.");
+
+                        ui.add_space(8.0);
+                        ui.heading("3. What is QGISCraft?");
+                        ui.label("A sovereign, clean-room 1:1 QGIS clone shell written in pure Rust (egui 0.37).");
+                        ui.label("• Preserves QGIS muscle memory, menu layouts, shortcuts (Ctrl+Shift+F, F5), and dock interactions.");
+                        ui.label("• Database-as-Project: Entire project state lives in one self-contained SQLite file (qgiscraft.db).");
+                        ui.label("• Agentic AI & MCP First: 100% of spatial functions can be operated headlessly by AI via MCP.");
+
+                        ui.add_space(8.0);
+                        ui.heading("4. Key Features Existing & Operational");
+                        ui.label("• Keyless Photon Geocoding & Offline Vienna Index (Stephansplatz, Karlsplatz, etc.).");
+                        ui.label("• Live OpenStreetMap Overpass Harvesting (query any tag, e.g. amenity=pharmacy, and ingest).");
+                        ui.label("• Geodesic Spatial Toolbox: Great-circle buffers, circles, ellipses, nearest-neighbor, grids.");
+                        ui.label("• SIGINT / Doppler Emitter Localization: Triangulates radio transmitters from satellite flyovers.");
+                        ui.label("• Ear-Clipping Vector Polygon Triangulation & Tile Basemap Caching.");
+
+                        ui.add_space(8.0);
+                        ui.heading("5. Planned Features & Fleet Synergy");
+                        ui.label("• Chrono-Cartography Bridge with TravelCraft: Overlay Edo-period roads over modern Japan.");
+                        ui.label("• Native Digital Elevation Model (DEM) Hillshading & Contour lines.");
+                        ui.label("• Direct GPX / KML outdoor track ingestion.");
+
+                        ui.add_space(10.0);
+                        if ui.button("Close Handbook").clicked() {
+                            self.show_help = false;
+                        }
+                    });
+                });
+        }
         if self.show_about {
             egui::Window::new("About qgiscraft").show(ui.ctx(), |ui| {
                 ui.label(format!("qgiscraft-mcp {}", env!("CARGO_PKG_VERSION")));
@@ -3688,6 +3740,7 @@ mod tests {
             fit_only: None,
             confirm_new: false,
             show_about: false,
+            show_help: false,
             show_settings: false,
             dialog: Dialog::None,
             toolbox_query: String::new(),
