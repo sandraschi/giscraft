@@ -137,6 +137,7 @@ struct LayerRow {
 
 struct QgisCraftApp {
     db_path: String,
+    locale: qgiscraft_core::i18n::AppLocale,
     layers: Vec<LayerRow>,
     features: Vec<store::StoredFeature>,
     selected: Option<String>,
@@ -215,6 +216,7 @@ impl QgisCraftApp {
         let db_path = store::default_db_path().to_string_lossy().to_string();
         let mut app = Self {
             db_path,
+            locale: qgiscraft_core::i18n::AppLocale::default(),
             layers: Vec::new(),
             features: Vec::new(),
             selected: None,
@@ -2255,11 +2257,14 @@ impl eframe::App for QgisCraftApp {
         // Menu bar parity: Project/Edit/View/Layer/Settings/Plugins/Vector/Raster/Database/Web/Processing/Help
         egui::Panel::top("menubar").show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.menu_button("Project", |ui| {
+                let loc = self.locale;
+                use qgiscraft_core::i18n::{t, I18nKey};
+
+                ui.menu_button(t(I18nKey::MenuProject, loc), |ui| {
                     let label = if self.confirm_new {
                         "New (click again to confirm wipe)"
                     } else {
-                        "New (clears project)"
+                        t(I18nKey::ProjectNew, loc)
                     };
                     if ui.button(label).clicked() {
                         if self.confirm_new {
@@ -2269,17 +2274,17 @@ impl eframe::App for QgisCraftApp {
                             self.push_log("New armed: click again to wipe".to_string());
                         }
                     }
-                    if ui.button("Refresh (F5)").clicked() {
+                    if ui.button(t(I18nKey::ProjectRefresh, loc)).clicked() {
                         self.confirm_new = false;
                         self.refresh();
                         self.push_log("refreshed".to_string());
                     }
-                    if ui.button("Quit").clicked() {
+                    if ui.button(t(I18nKey::ProjectQuit, loc)).clicked() {
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });
-                ui.menu_button("Layer", |ui| {
-                    if ui.button("Add Vector Layer...").clicked() {
+                ui.menu_button(t(I18nKey::MenuLayer, loc), |ui| {
+                    if ui.button(t(I18nKey::LayerAddVector, loc)).clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("GeoJSON", &["geojson", "json"])
                             .pick_file()
@@ -2289,7 +2294,7 @@ impl eframe::App for QgisCraftApp {
                             self.push_log("import cancelled".to_string());
                         }
                     }
-                    if ui.button("Add Delimited Text Layer...").clicked() {
+                    if ui.button(t(I18nKey::LayerAddCsv, loc)).clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("CSV", &["csv", "txt"])
                             .pick_file()
@@ -2299,45 +2304,45 @@ impl eframe::App for QgisCraftApp {
                             self.push_log("import cancelled".to_string());
                         }
                     }
-                    if ui.button("Remove selected (Del)").clicked() {
+                    if ui.button(t(I18nKey::LayerRemove, loc)).clicked() {
                         self.remove_selected();
                     }
-                    if ui.button("Zoom to selected").clicked() {
+                    if ui.button(t(I18nKey::LayerZoomTo, loc)).clicked() {
                         self.zoom_to_selected();
                     }
-                    if ui.button("Show all").clicked() {
+                    if ui.button(t(I18nKey::LayerShowAll, loc)).clicked() {
                         self.set_all_visible(true);
                     }
-                    if ui.button("Hide all").clicked() {
+                    if ui.button(t(I18nKey::LayerHideAll, loc)).clicked() {
                         self.set_all_visible(false);
                     }
                 });
-                ui.menu_button("View", |ui| {
-                    if ui.button("Zoom in (Ctrl++)").clicked() {
+                ui.menu_button(t(I18nKey::MenuView, loc), |ui| {
+                    if ui.button(t(I18nKey::ViewZoomIn, loc)).clicked() {
                         self.zoom = (self.zoom + 1.0).clamp(2.0, 19.0);
                         self.status = "zoom".to_string();
                     }
-                    if ui.button("Zoom out (Ctrl+-)").clicked() {
+                    if ui.button(t(I18nKey::ViewZoomOut, loc)).clicked() {
                         self.zoom = (self.zoom - 1.0).clamp(2.0, 19.0);
                         self.status = "zoom".to_string();
                     }
-                    if ui.button("Fit data (Ctrl+0)").clicked() {
+                    if ui.button(t(I18nKey::ViewFitData, loc)).clicked() {
                         self.fit_only = None;
                         self.fit_requested = true;
                     }
-                    if ui.button("Reset view (Wien)").clicked() {
+                    if ui.button(t(I18nKey::ViewResetVienna, loc)).clicked() {
                         self.center_lng = 16.3738;
                         self.center_lat = 48.2082;
                         self.zoom = 15.0;
                         self.status = "reset".to_string();
                     }
                 });
-                ui.menu_button("Settings", |ui| {
+                ui.menu_button(t(I18nKey::MenuSettings, loc), |ui| {
                     if ui.button("Configuration...").clicked() {
                         self.show_settings = true;
                     }
                 });
-                ui.menu_button("Help", |ui| {
+                ui.menu_button(t(I18nKey::MenuHelp, loc), |ui| {
                     if ui.button("QGISCraft Handbook & GIS Guide...").clicked() {
                         self.show_help = true;
                     }
@@ -2346,7 +2351,7 @@ impl eframe::App for QgisCraftApp {
                         self.show_about = true;
                     }
                 });
-                ui.menu_button("Vector", |ui| {
+                ui.menu_button(t(I18nKey::MenuVector, loc), |ui| {
                     if ui.button("Add Vector Layer...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("GeoJSON", &["geojson", "json"])
@@ -2381,7 +2386,7 @@ impl eframe::App for QgisCraftApp {
                         }
                     }
                 });
-                ui.menu_button("Raster", |ui| {
+                ui.menu_button(t(I18nKey::MenuRaster, loc), |ui| {
                     if ui.button("Add XYZ Tile Layer...").clicked() {
                         self.dialog = Dialog::XyzTile {
                             name: String::new(),
@@ -2392,7 +2397,7 @@ impl eframe::App for QgisCraftApp {
                         self.remove_selected();
                     }
                 });
-                ui.menu_button("Database", |ui| {
+                ui.menu_button(t(I18nKey::MenuDatabase, loc), |ui| {
                     if ui.button("New Scratch Layer...").clicked() {
                         self.dialog = Dialog::Scratch {
                             name: String::new(),
@@ -2400,7 +2405,7 @@ impl eframe::App for QgisCraftApp {
                         };
                     }
                 });
-                ui.menu_button("Web", |ui| {
+                ui.menu_button(t(I18nKey::MenuWeb, loc), |ui| {
                     ui.label("XYZ basemap presets (one click, replaces current):");
                     for (id, url) in XYZ_PRESETS {
                         if ui.button(id).clicked() {
@@ -2408,7 +2413,7 @@ impl eframe::App for QgisCraftApp {
                         }
                     }
                 });
-                ui.menu_button("Processing", |ui| {
+                ui.menu_button(t(I18nKey::MenuProcessing, loc), |ui| {
                     if ui.button("Download OSM features...").clicked() {
                         self.dialog = Dialog::OsmDownload {
                             key: "amenity".to_string(),
@@ -2424,13 +2429,13 @@ impl eframe::App for QgisCraftApp {
                     }
                 });
                 for menu in ["Edit"] {
-                    ui.menu_button(menu, |ui| {
+                    ui.menu_button(t(I18nKey::MenuEdit, loc), |ui| {
                         ui.label(format!(
                             "{menu} commands land with later phases (typed, not stubbed)"
                         ));
                     });
                 }
-                ui.menu_button("Plugins", |ui| {
+                ui.menu_button(t(I18nKey::MenuPlugins, loc), |ui| {
                     if ui.button("Show WKT...").clicked() {
                         self.dialog = Dialog::Wkt {
                             text: String::new(),
@@ -2442,6 +2447,20 @@ impl eframe::App for QgisCraftApp {
                             text: String::new(),
                         };
                     }
+                });
+
+                // Top-right Fleet Standard i18n Dropdown
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let cur_loc = self.locale;
+                    let label = format!("{} {}", cur_loc.flag(), cur_loc.code().to_uppercase());
+                    egui::ComboBox::from_id_salt("topbar_locale_selector")
+                        .selected_text(label)
+                        .show_ui(ui, |ui| {
+                            for loc_item in qgiscraft_core::i18n::AppLocale::all() {
+                                let text = format!("{} {}", loc_item.flag(), loc_item.display_name());
+                                let _ = ui.selectable_value(&mut self.locale, *loc_item, text);
+                            }
+                        });
                 });
             });
         });
@@ -3720,6 +3739,7 @@ mod tests {
     fn test_app(features: Vec<store::StoredFeature>, visible: bool) -> QgisCraftApp {
         QgisCraftApp {
             db_path: ":memory:".to_string(),
+            locale: qgiscraft_core::i18n::AppLocale::default(),
             layers: vec![LayerRow {
                 id: "rx".to_string(),
                 name: "Rx".to_string(),

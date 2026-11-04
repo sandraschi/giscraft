@@ -15,6 +15,7 @@ pub mod doppler;
 pub mod error;
 pub mod geo;
 pub mod geocode;
+pub mod i18n;
 pub mod import;
 pub mod mapforge;
 pub mod overpass;
