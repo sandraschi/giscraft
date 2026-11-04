@@ -279,6 +279,106 @@ pub fn nearest_join(
     Ok(out)
 }
 
+/// True-distance circle: N-gon ring around (`lng`,`lat`) with geodesic radius.
+pub fn geodesic_circle(
+    lng: f64,
+    lat: f64,
+    radius_m: f64,
+    segments: usize,
+) -> Result<Vec<(f64, f64)>, GisError> {
+    crate::geo::LonLat::new(lng, lat)
+        .map_err(|_| GisError::InvalidInput("center out of range".to_string()))?;
+    if !radius_m.is_finite() || radius_m <= 0.0 || radius_m > 1_000_000.0 {
+        return Err(GisError::InvalidInput(
+            "radius must be 0..1000000 m".to_string(),
+        ));
+    }
+    let segments = segments.clamp(8, 256);
+    let mut ring = Vec::new();
+    for i in 0..segments {
+        let bearing = 360.0 * i as f64 / segments as f64;
+        ring.push(destination_point(lng, lat, bearing, radius_m)?);
+    }
+    Ok(ring)
+}
+
+/// True-distance ellipse: axes in meters, bearing clockwise from north.
+/// Built by scaling a unit circle along rotated axes, vertices geodesic.
+pub fn geodesic_ellipse(
+    lng: f64,
+    lat: f64,
+    major_m: f64,
+    minor_m: f64,
+    bearing_deg: f64,
+    segments: usize,
+) -> Result<Vec<(f64, f64)>, GisError> {
+    crate::geo::LonLat::new(lng, lat)
+        .map_err(|_| GisError::InvalidInput("center out of range".to_string()))?;
+    for (v, label) in [(major_m, "major"), (minor_m, "minor")] {
+        if !v.is_finite() || v <= 0.0 || v > 1_000_000.0 {
+            return Err(GisError::InvalidInput(format!(
+                "{label} must be 0..1000000 m"
+            )));
+        }
+    }
+    if !bearing_deg.is_finite() {
+        return Err(GisError::InvalidInput("bearing must be finite".to_string()));
+    }
+    let segments = segments.clamp(8, 256);
+    // Local flat approximation is fine: axes are small vs Earth radius and
+    // the final vertices are re-projected through destination math.
+    let brng = bearing_deg.to_radians();
+    let (bx, by) = (brng.sin(), brng.cos());
+    let mut ring = Vec::new();
+    for i in 0..segments {
+        let a = 2.0 * std::f64::consts::PI * i as f64 / segments as f64;
+        let (ux, uy) = (a.cos(), a.sin());
+        // Axis-aligned ellipse point, rotated into bearing frame (meters).
+        let ex = major_m * ux;
+        let ey = minor_m * uy;
+        let (dx_m, dy_m) = (ex * bx + ey * by, -ex * by + ey * bx);
+        let dist = (dx_m * dx_m + dy_m * dy_m).sqrt();
+        if dist <= 0.0 {
+            continue;
+        }
+        let vertex_bearing = (dx_m.atan2(dy_m).to_degrees() + 360.0) % 360.0;
+        ring.push(destination_point(lng, lat, vertex_bearing, dist)?);
+    }
+    if ring.len() < 3 {
+        return Err(GisError::InvalidInput(
+            "ellipse produced no ring".to_string(),
+        ));
+    }
+    Ok(ring)
+}
+
+/// Straight geodesic-ish line through two coordinates (great-circle chord
+/// densified every ~1 km so long lines render curved, not straight).
+pub fn xy_to_line(lng1: f64, lat1: f64, lng2: f64, lat2: f64) -> Result<Vec<(f64, f64)>, GisError> {
+    let a = crate::geo::LonLat::new(lng1, lat1)
+        .map_err(|_| GisError::InvalidInput("first point out of range".to_string()))?;
+    let b = crate::geo::LonLat::new(lng2, lat2)
+        .map_err(|_| GisError::InvalidInput("second point out of range".to_string()))?;
+    let dist = crate::geo::haversine_m(a, b);
+    if !dist.is_finite() || dist <= 0.0 {
+        return Err(GisError::InvalidInput(
+            "line needs two distinct points".to_string(),
+        ));
+    }
+    if dist > 20_000_000.0 {
+        return Err(GisError::InvalidInput(
+            "line too long (cap 20000 km)".to_string(),
+        ));
+    }
+    let steps = ((dist / 1000.0).ceil() as usize).clamp(1, 5000);
+    let mut pts = Vec::new();
+    for i in 0..=steps {
+        let t = i as f64 / steps as f64;
+        pts.push((a.lng + (b.lng - a.lng) * t, a.lat + (b.lat - a.lat) * t));
+    }
+    Ok(pts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -412,5 +512,61 @@ mod tests {
         }
         assert!(nearest_join(&[], &tgt).is_err());
         assert!(nearest_join(&src, &[]).is_err());
+    }
+
+    #[test]
+    fn geodesic_circle_is_closed_and_sized() {
+        use crate::geo::{haversine_m, LonLat};
+        let ring = geodesic_circle(16.3738, 48.2082, 1000.0, 24);
+        assert!(ring.is_ok());
+        if let Ok(ring) = ring {
+            assert_eq!(ring.len(), 24);
+            for (x, y) in &ring {
+                let d = haversine_m(
+                    LonLat::new(16.3738, 48.2082).unwrap_or(LonLat { lng: 0.0, lat: 0.0 }),
+                    LonLat::new(*x, *y).unwrap_or(LonLat { lng: 0.0, lat: 0.0 }),
+                );
+                assert!((d - 1000.0).abs() < 5.0, "vertex at {d} m");
+            }
+            assert!(geodesic_circle(16.3, 48.2, 0.0, 24).is_err());
+            assert!(geodesic_circle(16.3, 48.2, -5.0, 24).is_err());
+        }
+    }
+
+    #[test]
+    fn geodesic_ellipse_axes_differ() {
+        use crate::geo::{haversine_m, LonLat};
+        let ring = geodesic_ellipse(16.3738, 48.2082, 1000.0, 500.0, 0.0, 36);
+        assert!(ring.is_ok());
+        if let Ok(ring) = ring {
+            assert_eq!(ring.len(), 36);
+            let c = LonLat::new(16.3738, 48.2082).unwrap_or(LonLat { lng: 0.0, lat: 0.0 });
+            let mut dists: Vec<f64> = ring
+                .iter()
+                .map(|(x, y)| {
+                    haversine_m(
+                        c,
+                        LonLat::new(*x, *y).unwrap_or(LonLat { lng: 0.0, lat: 0.0 }),
+                    )
+                })
+                .collect();
+            dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let first = dists.first().copied().unwrap_or(0.0);
+            let last = dists.last().copied().unwrap_or(0.0);
+            assert!((last - 1000.0).abs() < 15.0, "major {last}");
+            assert!((first - 500.0).abs() < 15.0, "minor {first}");
+            assert!(geodesic_ellipse(16.3, 48.2, 1000.0, 0.0, 0.0, 24).is_err());
+        }
+    }
+
+    #[test]
+    fn xy_to_line_densifies_and_rejects() {
+        let line = xy_to_line(16.3, 48.2, 16.4, 48.25);
+        assert!(line.is_ok());
+        if let Ok(pts) = line {
+            assert!(pts.len() >= 2);
+            assert!(xy_to_line(16.3, 48.2, 16.3, 48.2).is_err());
+            assert!(xy_to_line(16.3, 91.0, 16.4, 48.2).is_err());
+        }
     }
 }

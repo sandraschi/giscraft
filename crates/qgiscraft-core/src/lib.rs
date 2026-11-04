@@ -41,6 +41,7 @@ pub const CMD_MAP_FORGE: &str = "map.forge";
 pub const CMD_WKT_SHOW: &str = "wkt.show";
 pub const CMD_PROCESSING_GRID: &str = "processing.grid";
 pub const CMD_PROCESSING_NEAREST: &str = "processing.nearest";
+pub const CMD_PROCESSING_GEODESIC: &str = "processing.geodesic";
 pub const CMD_EXPORT_PNG: &str = "export.png";
 
 /// Bounded command bus. New capability = new variant + dispatch arm + test.
@@ -106,6 +107,19 @@ pub enum Command {
         target_layer: String,
         output_layer: Option<String>,
     },
+    ProcessingGeodesic {
+        shape: String,
+        lng: Option<f64>,
+        lat: Option<f64>,
+        radius_m: Option<f64>,
+        major_m: Option<f64>,
+        minor_m: Option<f64>,
+        bearing_deg: Option<f64>,
+        lng2: Option<f64>,
+        lat2: Option<f64>,
+        segments: Option<usize>,
+        output_layer: Option<String>,
+    },
     ExportPng {
         width: Option<u32>,
         height: Option<u32>,
@@ -130,7 +144,7 @@ pub async fn dispatch(cmd: Command) -> Value {
             "commands": [
                 CMD_STATUS, CMD_PROJECT_STATUS,
                 CMD_LAYER_ADD, CMD_LAYER_LIST, CMD_LAYER_REMOVE,
-                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_MAP_FORGE, CMD_WKT_SHOW, CMD_PROCESSING_GRID, CMD_PROCESSING_NEAREST, CMD_EXPORT_PNG,
+                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_MAP_FORGE, CMD_WKT_SHOW,                 CMD_PROCESSING_GRID, CMD_PROCESSING_NEAREST, CMD_PROCESSING_GEODESIC, CMD_EXPORT_PNG,
             ],
             "agent_contract": "CLI-first: every command supports --json; `mcp` subcommand mirrors the same dispatch over stdio",
         }),
@@ -484,6 +498,112 @@ pub async fn dispatch(cmd: Command) -> Value {
                 "note": "Core validation ok: persistence performed by L2 store or app control handler"
             })
         }
+        Command::ProcessingGeodesic {
+            shape,
+            lng,
+            lat,
+            radius_m,
+            major_m,
+            minor_m,
+            bearing_deg,
+            lng2,
+            lat2,
+            segments,
+            output_layer,
+        } => {
+            let shape = shape.trim().to_ascii_lowercase();
+            if shape != "circle" && shape != "ellipse" && shape != "line" {
+                return json!({"error": "invalid input: shape must be circle, ellipse or line", "op": "processing.geodesic"});
+            }
+            let (c_lng, c_lat) = match (lng, lat) {
+                (Some(x), Some(y)) => (x, y),
+                _ => {
+                    return json!({"error": "invalid input: geodesic needs lng/lat center", "op": "processing.geodesic"});
+                }
+            };
+            let segs = segments.unwrap_or(64);
+            let ring = if shape == "circle" {
+                match radius_m {
+                    Some(r) => match processing::geodesic_circle(c_lng, c_lat, r, segs) {
+                        Ok(ring) => ring,
+                        Err(e) => {
+                            return json!({"error": e.to_string(), "op": "processing.geodesic"})
+                        }
+                    },
+                    None => {
+                        return json!({"error": "invalid input: circle needs radius_m", "op": "processing.geodesic"});
+                    }
+                }
+            } else if shape == "ellipse" {
+                match (major_m, minor_m) {
+                    (Some(a), Some(b)) => {
+                        match processing::geodesic_ellipse(
+                            c_lng,
+                            c_lat,
+                            a,
+                            b,
+                            bearing_deg.unwrap_or(0.0),
+                            segs,
+                        ) {
+                            Ok(ring) => ring,
+                            Err(e) => {
+                                return json!({"error": e.to_string(), "op": "processing.geodesic"})
+                            }
+                        }
+                    }
+                    _ => {
+                        return json!({"error": "invalid input: ellipse needs major_m and minor_m", "op": "processing.geodesic"});
+                    }
+                }
+            } else {
+                match (lng2, lat2) {
+                    (Some(x2), Some(y2)) => match processing::xy_to_line(c_lng, c_lat, x2, y2) {
+                        Ok(pts) => pts,
+                        Err(e) => {
+                            return json!({"error": e.to_string(), "op": "processing.geodesic"})
+                        }
+                    },
+                    _ => {
+                        return json!({"error": "invalid input: line needs lng2/lat2", "op": "processing.geodesic"});
+                    }
+                }
+            };
+            let closed: Vec<(f64, f64)> = if shape == "line" {
+                ring.clone()
+            } else {
+                let mut c = ring.clone();
+                if let Some(first) = ring.first().copied() {
+                    if c.last() != Some(&first) {
+                        c.push(first);
+                    }
+                }
+                c
+            };
+            let inner: Vec<String> = closed.iter().map(|(x, y)| format!("[{x},{y}]")).collect();
+            let geom_kind = if shape == "line" {
+                "LineString"
+            } else {
+                "Polygon"
+            };
+            let coords = if shape == "line" {
+                format!("[{}]", inner.join(","))
+            } else {
+                format!("[[{}]]", inner.join(","))
+            };
+            let geojson = format!("{{\"type\":\"{geom_kind}\",\"coordinates\":{coords}}}");
+            let out_id = match output_layer {
+                Some(id) if !id.trim().is_empty() => id.trim().to_string(),
+                _ => format!("geodesic-{shape}"),
+            };
+            let (cx, cy) = (c_lng, c_lat);
+            json!({
+                "op": "processing.geodesic",
+                "layer": out_id,
+                "name": out_id,
+                "count": 1,
+                "hits": [{"name": out_id, "kind": "way", "lng": cx, "lat": cy, "geom": serde_json::from_str::<Value>(&geojson).unwrap_or(Value::Null)}],
+            })
+        }
         Command::ExportPng {
             width: _,
             height: _,
@@ -505,7 +625,60 @@ mod tests {
             .and_then(|c| c.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(cmds.len(), 15);
+        assert_eq!(cmds.len(), 16);
+    }
+
+    #[tokio::test]
+    async fn processing_geodesic_circle_and_errors() {
+        let v = dispatch(Command::ProcessingGeodesic {
+            shape: "circle".to_string(),
+            lng: Some(16.3738),
+            lat: Some(48.2082),
+            radius_m: Some(1000.0),
+            major_m: None,
+            minor_m: None,
+            bearing_deg: None,
+            lng2: None,
+            lat2: None,
+            segments: Some(24),
+            output_layer: None,
+        })
+        .await;
+        assert_eq!(v.get("count").and_then(|n| n.as_u64()), Some(1));
+        assert_eq!(
+            v.get("layer").and_then(|s| s.as_str()),
+            Some("geodesic-circle")
+        );
+        let bad_shape = dispatch(Command::ProcessingGeodesic {
+            shape: "square".to_string(),
+            lng: Some(16.3),
+            lat: Some(48.2),
+            radius_m: Some(100.0),
+            major_m: None,
+            minor_m: None,
+            bearing_deg: None,
+            lng2: None,
+            lat2: None,
+            segments: None,
+            output_layer: None,
+        })
+        .await;
+        assert!(bad_shape.get("error").is_some());
+        let no_radius = dispatch(Command::ProcessingGeodesic {
+            shape: "circle".to_string(),
+            lng: Some(16.3),
+            lat: Some(48.2),
+            radius_m: None,
+            major_m: None,
+            minor_m: None,
+            bearing_deg: None,
+            lng2: None,
+            lat2: None,
+            segments: None,
+            output_layer: None,
+        })
+        .await;
+        assert!(no_radius.get("error").is_some());
     }
 
     #[tokio::test]
