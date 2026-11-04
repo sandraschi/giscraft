@@ -71,6 +71,10 @@ enum Dialog {
         lat2: String,
         layer_id: String,
     },
+    Doppler {
+        capture: String,
+        layer_id: String,
+    },
     Buffer {
         radius_m: String,
     },
@@ -913,6 +917,98 @@ impl QgisCraftApp {
         self.push_log(outcome);
     }
 
+    /// Processing toolbox > Doppler locate: rank candidates, persist top hits.
+    /// Bbox comes from the current canvas; step auto-scales to ~2500 cells.
+    fn submit_doppler(&mut self, path: &str, layer_id: &str) {
+        if layer_id.is_empty() || layer_id.chars().count() > 64 {
+            self.push_log("doppler failed: layer id must be 1..64 chars".to_string());
+            return;
+        }
+        let text = match std::fs::read_to_string(path.trim()) {
+            Ok(t) => t,
+            Err(e) => {
+                self.push_log(format!("doppler failed: read failed: {e}"));
+                return;
+            }
+        };
+        let cap = match qgiscraft_core::doppler::parse_capture(&text) {
+            Ok(c) => c,
+            Err(e) => {
+                self.push_log(format!("doppler failed: {e}"));
+                return;
+            }
+        };
+        let bbox = match self.view_bbox() {
+            Some(b) => b,
+            None => {
+                self.push_log("doppler failed: no canvas extent yet".to_string());
+                return;
+            }
+        };
+        let span = (bbox.max_lng - bbox.min_lng)
+            .max(bbox.max_lat - bbox.min_lat)
+            .max(0.0001);
+        let step = (span / 50.0).clamp(0.0005, 1.0);
+        let ranked = match qgiscraft_core::doppler::locate(
+            &qgiscraft_core::doppler::LocateParams {
+                south: bbox.min_lat,
+                west: bbox.min_lng,
+                north: bbox.max_lat,
+                east: bbox.max_lng,
+                step_deg: step,
+                top_n: 10,
+                terrain_m: 200.0,
+            },
+            &cap,
+        ) {
+            Ok(r) => r,
+            Err(e) => {
+                self.push_log(format!("doppler failed: {e}"));
+                return;
+            }
+        };
+        let rows: Vec<store::StoredFeature> = ranked
+            .iter()
+            .enumerate()
+            .map(|(i, p)| store::StoredFeature {
+                layer_id: layer_id.to_string(),
+                name: format!("cand-{} ({:.2})", i + 1, p.score),
+                kind: "point".to_string(),
+                lng: p.lng,
+                lat: p.lat,
+                geom_json: None,
+            })
+            .collect();
+        let n = rows.len();
+        let outcome = match store::open_default() {
+            Ok(conn) => {
+                let layer = store::StoredLayer {
+                    id: layer_id.to_string(),
+                    name: layer_id.to_string(),
+                    source: "doppler".to_string(),
+                    geom_type: "point".to_string(),
+                    crs: "EPSG:4326".to_string(),
+                    visible: true,
+                    color: String::new(),
+                };
+                match store::add_layer(&conn, &layer)
+                    .and_then(|()| store::replace_features(&conn, layer_id, &rows).map(|_| ()))
+                {
+                    Ok(()) => {
+                        format!("doppler: top {n} into {layer_id} (terrain 200m, step {step:.4})")
+                    }
+                    Err(e) => format!("doppler ingest failed: {e}"),
+                }
+            }
+            Err(e) => format!("db open failed: {e}"),
+        };
+        self.selected = Some(layer_id.to_string());
+        self.refresh();
+        self.fit_only = Some(layer_id.to_string());
+        self.fit_requested = true;
+        self.push_log(outcome);
+    }
+
     /// Show/hide every layer at once.
     fn set_all_visible(&mut self, visible: bool) {
         let ids: Vec<String> = self.layers.iter().map(|l| l.id.clone()).collect();
@@ -1745,6 +1841,50 @@ impl QgisCraftApp {
                     keep = false;
                 }
             }
+            Dialog::Doppler { capture, layer_id } => {
+                let mut submit = false;
+                let mut cancel = false;
+                let mut picked: Option<String> = None;
+                egui::Window::new("Doppler locate").show(ui.ctx(), |ui| {
+                    ui.label("Capture JSON (tracks + curves):");
+                    ui.horizontal(|ui| {
+                        ui.text_edit_singleline(capture);
+                        if ui.button("Browse...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("JSON", &["json"])
+                                .pick_file()
+                            {
+                                picked = Some(path.to_string_lossy().to_string());
+                            }
+                        }
+                    });
+                    ui.label("Output layer (bbox = current canvas):");
+                    ui.text_edit_singleline(layer_id);
+                    ui.horizontal(|ui| {
+                        if ui.button("Locate").clicked() {
+                            submit = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+                if let Some(p) = picked {
+                    *capture = p;
+                }
+                if submit {
+                    let id = if layer_id.trim().is_empty() {
+                        "doppler-hits".to_string()
+                    } else {
+                        layer_id.trim().to_string()
+                    };
+                    let path = capture.clone();
+                    self.submit_doppler(&path, &id);
+                    keep = false;
+                } else if cancel {
+                    keep = false;
+                }
+            }
             Dialog::Buffer { radius_m } => {
                 let mut cancel = false;
                 let mut submit: Option<f64> = None;
@@ -2496,6 +2636,10 @@ impl eframe::App for QgisCraftApp {
                 ("Create grid", "Rect or hex grid over a bbox"),
                 ("Nearest neighbor join", "Hub lines to closest features"),
                 ("Geodesic shape", "True-distance circle, ellipse or line"),
+                (
+                    "Doppler locate",
+                    "Match curves to ADS-B tracks (colsto method)",
+                ),
             ] {
                 if !query.is_empty()
                     && !name.to_lowercase().contains(&query)
@@ -2566,6 +2710,10 @@ impl eframe::App for QgisCraftApp {
                                 layer_id: "geodesic".to_string(),
                             }
                         }
+                        "Doppler locate" => Dialog::Doppler {
+                            capture: String::new(),
+                            layer_id: "doppler-hits".to_string(),
+                        },
                         _ => Dialog::Buffer {
                             radius_m: "500".to_string(),
                         },
