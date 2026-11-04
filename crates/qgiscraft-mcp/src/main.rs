@@ -178,6 +178,35 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// True-distance geodesic shape: circle, ellipse or line (persists to SQLite)
+    ProcessingGeodesic {
+        #[arg(long)]
+        shape: String,
+        #[arg(long)]
+        lng: Option<f64>,
+        #[arg(long)]
+        lat: Option<f64>,
+        #[arg(long)]
+        radius_m: Option<f64>,
+        #[arg(long)]
+        major_m: Option<f64>,
+        #[arg(long)]
+        minor_m: Option<f64>,
+        #[arg(long)]
+        bearing_deg: Option<f64>,
+        #[arg(long)]
+        lng2: Option<f64>,
+        #[arg(long)]
+        lat2: Option<f64>,
+        #[arg(long)]
+        segments: Option<usize>,
+        #[arg(long)]
+        output_layer: Option<String>,
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Forge a map from a MapSpec JSON file (dry-run builds QL; --live executes, keyless)
     ForgeFromSpec {
         #[arg(long)]
@@ -524,6 +553,7 @@ fn tools_list() -> Value {
             {"name": "processing.buffer", "description": "Buffer point features of a layer into circle polygons: layer_id required; distance (meters, default 200.0), segments (8..256, default 24), output_layer, db optional", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "distance": {"type": "number"}, "segments": {"type": "integer"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["layer_id"]}},
             {"name": "processing.grid", "description": "Build a rect or hex grid over a bbox: south/west/north/east required; cell_size meters (default 500), hex flag, output_layer, db optional; persists to db", "inputSchema": {"type": "object", "properties": {"south": {"type": "number"}, "west": {"type": "number"}, "north": {"type": "number"}, "east": {"type": "number"}, "cell_size": {"type": "number"}, "hex": {"type": "boolean"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["south", "west", "north", "east"]}},
             {"name": "processing.nearest", "description": "Nearest-neighbor join: hub lines from source_layer to closest target_layer feature; output_layer, db optional; persists to db", "inputSchema": {"type": "object", "properties": {"source_layer": {"type": "string"}, "target_layer": {"type": "string"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["source_layer", "target_layer"]}},
+            {"name": "processing.geodesic", "description": "True-distance shape: circle (radius_m), ellipse (major_m/minor_m/bearing_deg) or line (lng2/lat2) around lng/lat; segments, output_layer, db optional; persists to db", "inputSchema": {"type": "object", "properties": {"shape": {"type": "string"}, "lng": {"type": "number"}, "lat": {"type": "number"}, "radius_m": {"type": "number"}, "major_m": {"type": "number"}, "minor_m": {"type": "number"}, "bearing_deg": {"type": "number"}, "lng2": {"type": "number"}, "lat2": {"type": "number"}, "segments": {"type": "integer"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["shape", "lng", "lat"]}},
             {"name": "map.forge", "description": "Forge a map from a MapSpec JSON file: path required; live=false dry-runs QL per layer else executes; ingest=true writes live hits to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "live": {"type": "boolean"}, "ingest": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["path"]}},
             {"name": "wkt.show", "description": "Show WKT geometry as a layer: wkt required (POINT/LINESTRING/POLYGON + MULTI, 2D only); layer_id, db optional; persists to db", "inputSchema": {"type": "object", "properties": {"wkt": {"type": "string"}, "layer_id": {"type": "string"}, "db": {"type": "string"}}, "required": ["wkt"]}},
             {"name": "export.png", "description": "Export map PNG (Phase 1 render path)", "inputSchema": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}}},
@@ -826,6 +856,48 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
                 "processing.nearest",
             );
             json!({"nearest_result": out, "layer": out_id, "count": count, "ingest": stored})
+        }
+        "processing.geodesic" => {
+            let out = run(Command::ProcessingGeodesic {
+                shape: str_arg(args, "shape").unwrap_or_default(),
+                lng: args.get("lng").and_then(|v| v.as_f64()),
+                lat: args.get("lat").and_then(|v| v.as_f64()),
+                radius_m: args.get("radius_m").and_then(|v| v.as_f64()),
+                major_m: args.get("major_m").and_then(|v| v.as_f64()),
+                minor_m: args.get("minor_m").and_then(|v| v.as_f64()),
+                bearing_deg: args.get("bearing_deg").and_then(|v| v.as_f64()),
+                lng2: args.get("lng2").and_then(|v| v.as_f64()),
+                lat2: args.get("lat2").and_then(|v| v.as_f64()),
+                segments: args
+                    .get("segments")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|n| usize::try_from(n).ok()),
+                output_layer: str_arg(args, "output_layer"),
+            });
+            if out.get("error").is_some() {
+                return json!({"content": [{"type": "text", "text": out.to_string()}]});
+            }
+            let db = str_arg(args, "db");
+            let layer = out
+                .get("layer")
+                .and_then(|v| v.as_str())
+                .unwrap_or("geodesic");
+            let name = out
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("geodesic");
+            let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+            let geom = infer_geom_type(&hits);
+            let stored = ingest_hits(
+                db.as_deref(),
+                layer,
+                name,
+                "processing:geodesic",
+                geom,
+                &hits,
+                "processing.geodesic",
+            );
+            json!({"geodesic_result": out, "ingest": stored})
         }
         "map.forge" => {
             let live = args.get("live").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -1266,6 +1338,65 @@ fn main() {
                 }
             }
         }
+        Commands::ProcessingGeodesic {
+            shape,
+            lng,
+            lat,
+            radius_m,
+            major_m,
+            minor_m,
+            bearing_deg,
+            lng2,
+            lat2,
+            segments,
+            output_layer,
+            db,
+            json,
+        } => {
+            let out = run(Command::ProcessingGeodesic {
+                shape,
+                lng,
+                lat,
+                radius_m,
+                major_m,
+                minor_m,
+                bearing_deg,
+                lng2,
+                lat2,
+                segments,
+                output_layer,
+            });
+            if out.get("error").is_some() {
+                show(out, json, "processing.geodesic");
+            } else {
+                let layer = out
+                    .get("layer")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("geodesic")
+                    .to_string();
+                let name = out
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("geodesic")
+                    .to_string();
+                let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+                let geom = infer_geom_type(&hits);
+                let stored = ingest_hits(
+                    db.as_deref(),
+                    &layer,
+                    &name,
+                    "processing:geodesic",
+                    geom,
+                    &hits,
+                    "processing.geodesic",
+                );
+                show(
+                    json!({"geodesic_result": out, "ingest": stored}),
+                    json,
+                    "processing.geodesic",
+                );
+            }
+        }
         Commands::ForgeFromSpec {
             path,
             live,
@@ -1361,7 +1492,7 @@ mod tests {
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(tools.len(), 15);
+        assert_eq!(tools.len(), 16);
     }
 
     #[test]
@@ -1495,6 +1626,30 @@ mod tests {
             None,
         );
         assert!(content_text(&result).contains("invalid input"));
+    }
+
+    #[test]
+    fn processing_geodesic_circle_persists_to_temp_db() {
+        let db = temp_db("geodesic");
+        let result = call_tool(
+            "processing.geodesic",
+            &json!({"shape": "circle", "lng": 16.3738, "lat": 48.2082, "radius_m": 1000.0, "db": db}),
+            None,
+        );
+        let text = content_text(&result);
+        assert!(text.contains("geodesic-circle"));
+        assert!(text.contains("\"count\":1"));
+        let _ = std::fs::remove_file(temp_db("geodesic"));
+    }
+
+    #[test]
+    fn processing_geodesic_bad_shape_is_typed_error() {
+        let result = call_tool(
+            "processing.geodesic",
+            &json!({"shape": "square", "lng": 16.3, "lat": 48.2, "radius_m": 100.0}),
+            None,
+        );
+        assert!(content_text(&result).contains("circle, ellipse or line"));
     }
 
     fn content_text(result: &Value) -> String {
