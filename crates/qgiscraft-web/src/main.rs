@@ -63,7 +63,7 @@ async fn layers(Query(q): Query<HashMap<String, String>>) -> impl IntoResponse {
                 .find(|(id, _)| *id == l.id)
                 .map(|(_, n)| *n)
                 .unwrap_or(0);
-            json!({"id": l.id, "name": l.name, "source": l.source, "geom_type": l.geom_type, "visible": l.visible, "features": n})
+            json!({"id": l.id, "name": l.name, "source": l.source, "geom_type": l.geom_type, "visible": l.visible, "color": l.color, "features": n})
         })
         .collect();
     (
@@ -272,17 +272,33 @@ async fn preview_png(Query(q): Query<PreviewQuery>) -> axum::response::Response 
     };
     // Fit visible features from this DB (same math as the canvas).
     let feats = qgiscraft_store::list_features(&conn, None).unwrap_or_default();
+    let colors: std::collections::HashMap<String, (u8, u8, u8)> =
+        qgiscraft_store::list_layers(&conn)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|l| {
+                let hex = l.color.trim().to_string();
+                if hex.is_empty() {
+                    return None;
+                }
+                qgiscraft_core::tiles::parse_layer_color(&hex)
+                    .ok()
+                    .flatten()
+                    .map(|rgb| (l.id, rgb))
+            })
+            .collect();
     // render_bmp does blocking tile I/O: run it on the blocking pool, not
     // the async worker (reqwest::blocking builds its own runtime and panics
     // if created - or dropped - inside an async context).
-    let bytes =
-        match tokio::task::spawn_blocking(move || render_bmp(&feats, w, h, with_tiles, &template))
-            .await
-        {
-            Ok(Ok(bytes)) => bytes,
-            Ok(Err(e)) => return err(e),
-            Err(e) => return err(format!("render task failed: {e}")),
-        };
+    let bytes = match tokio::task::spawn_blocking(move || {
+        render_bmp(&feats, w, h, with_tiles, &template, &colors)
+    })
+    .await
+    {
+        Ok(Ok(bytes)) => bytes,
+        Ok(Err(e)) => return err(e),
+        Err(e) => return err(format!("render task failed: {e}")),
+    };
     // BMP (BGR, bottom-up) -> PNG via the image crate.
     // `bytes` is the finished BMP from the blocking render above.
     let stride = (w as usize * 3).div_ceil(4) * 4;
@@ -332,6 +348,7 @@ fn render_bmp(
     height: u32,
     with_tiles: bool,
     template: &str,
+    colors: &std::collections::HashMap<String, (u8, u8, u8)>,
 ) -> Result<Vec<u8>, String> {
     use qgiscraft_core::tiles;
     if width == 0 || height == 0 || width > 4096 || height > 4096 {
@@ -469,9 +486,12 @@ fn render_bmp(
             }
         }
     }
-    // Points + lines + polygons (same palette rule as the canvas).
+    // Points + lines + polygons (stored color wins, else palette).
     for f in feats {
-        let color = layer_color(&f.layer_id);
+        let color = colors
+            .get(&f.layer_id)
+            .copied()
+            .unwrap_or_else(|| layer_color(&f.layer_id));
         if let Some(g) = f.geom_json.as_ref() {
             if g.contains("\"LineString\"") || g.contains("\"Polygon\"") {
                 continue; // full geometry renders in the canvas; preview draws points + tiles
@@ -579,12 +599,15 @@ mod tests {
 
     #[test]
     fn preview_renders_offline_points() {
+        let empty: std::collections::HashMap<String, (u8, u8, u8)> =
+            std::collections::HashMap::new();
         let bmp = render_bmp(
             &demo_features(),
             320,
             200,
             false,
             "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            &empty,
         );
         assert!(bmp.is_ok());
         if let Ok(bytes) = bmp {
@@ -595,7 +618,17 @@ mod tests {
 
     #[test]
     fn preview_rejects_empty() {
-        assert!(render_bmp(&[], 320, 200, false, "https://x/{z}/{x}/{y}.png").is_err());
-        assert!(render_bmp(&demo_features(), 0, 200, false, "https://x/{z}/{x}/{y}.png").is_err());
+        let empty: std::collections::HashMap<String, (u8, u8, u8)> =
+            std::collections::HashMap::new();
+        assert!(render_bmp(&[], 320, 200, false, "https://x/{z}/{x}/{y}.png", &empty).is_err());
+        assert!(render_bmp(
+            &demo_features(),
+            0,
+            200,
+            false,
+            "https://x/{z}/{x}/{y}.png",
+            &empty
+        )
+        .is_err());
     }
 }
