@@ -73,6 +73,17 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Set a layer's display color (#rrggbb, empty clears to palette)
+    LayerColor {
+        #[arg(long)]
+        id: String,
+        #[arg(long, default_value = "")]
+        color: String,
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Geocode search (demo default: Vienna; --live hits Photon, keyless)
     GeocodeSearch {
         #[arg(long)]
@@ -319,7 +330,7 @@ fn layer_list(db: Option<&str>) -> Value {
                 .find(|(id, _)| *id == l.id)
                 .map(|(_, n)| *n)
                 .unwrap_or(0);
-            json!({"id": l.id, "name": l.name, "source": l.source, "geom_type": l.geom_type, "crs": l.crs, "visible": l.visible, "features": n})
+            json!({"id": l.id, "name": l.name, "source": l.source, "geom_type": l.geom_type, "crs": l.crs, "visible": l.visible, "color": l.color, "features": n})
         })
         .collect();
     json!({"count": rows.len(), "layers": rows})
@@ -336,6 +347,24 @@ fn layer_remove(db: Option<&str>, id: &str) -> Value {
     match store::remove_layer(&conn, id) {
         Ok(removed) => json!({"id": id, "removed": removed}),
         Err(e) => json!({"error": e.to_string(), "op": "layer.remove"}),
+    }
+}
+
+fn layer_color_set(db: Option<&str>, id: &str, color: &str) -> Value {
+    let out = run(Command::LayerColor {
+        layer_id: id.to_string(),
+        color: Some(color.to_string()),
+    });
+    if out.get("error").is_some() {
+        return out;
+    }
+    let conn = match store::open_at(db) {
+        Ok(conn) => conn,
+        Err(e) => return json!({"error": e.to_string(), "op": "layer.color"}),
+    };
+    match store::set_color(&conn, id, color.trim()) {
+        Ok(updated) => json!({"id": id, "color": color.trim(), "updated": updated}),
+        Err(e) => json!({"error": e.to_string(), "op": "layer.color"}),
     }
 }
 
@@ -546,6 +575,7 @@ fn tools_list() -> Value {
             {"name": "layer.add", "description": "Add a layer: id, name required; source, geom_type, crs, visible, db optional", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "source": {"type": "string"}, "geom_type": {"type": "string"}, "crs": {"type": "string"}, "visible": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["id", "name"]}},
             {"name": "layer.list", "description": "List layers in draw order (SQLite project DB; db optional)", "inputSchema": {"type": "object", "properties": {"db": {"type": "string"}}}},
             {"name": "layer.remove", "description": "Remove a layer by id (db optional)", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "db": {"type": "string"}}, "required": ["id"]}},
+            {"name": "layer.color", "description": "Set a layer display color: id required, color #rrggbb (empty clears to palette), db optional", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "color": {"type": "string"}, "db": {"type": "string"}}, "required": ["id"]}},
             {"name": "geocode.search", "description": "Search places: query required, limit 1..50, live=false demo else Photon", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "live": {"type": "boolean"}}, "required": ["query"]}},
             {"name": "overpass.query", "description": "Overpass tag search: key/value required, bbox south/west/north/east optional, live=false dry-runs QL else executes; ingest=true writes hits to db", "inputSchema": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}, "south": {"type": "number"}, "west": {"type": "number"}, "north": {"type": "number"}, "east": {"type": "number"}, "live": {"type": "boolean"}, "ingest": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["key", "value"]}},
             {"name": "features.list", "description": "List ingested point features, optionally filtered to one layer (db optional)", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "db": {"type": "string"}}}},
@@ -568,7 +598,7 @@ fn str_arg(args: &Value, key: &str) -> Option<String> {
 }
 
 fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
-    // Connected mode: the 4 DB-touching tools run in the LIVE app instead of
+    // Connected mode: the DB-touching tools run in the LIVE app instead of
     // the local headless path, so there is exactly one writer. Everything
     // else (network tools, feature reads, export) stays local.
     if let Some(port) = connect {
@@ -578,6 +608,7 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
                 | "layer.add"
                 | "layer.list"
                 | "layer.remove"
+                | "layer.color"
                 | "layer.import"
                 | "processing.buffer"
         );
@@ -610,6 +641,14 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
             layer_remove(
                 db.as_deref(),
                 str_arg(args, "id").unwrap_or_default().as_str(),
+            )
+        }
+        "layer.color" => {
+            let db = str_arg(args, "db");
+            layer_color_set(
+                db.as_deref(),
+                str_arg(args, "id").unwrap_or_default().as_str(),
+                str_arg(args, "color").unwrap_or_default().as_str(),
             )
         }
         "geocode.search" => {
@@ -1072,6 +1111,18 @@ fn main() {
         Commands::LayerRemove { id, db, json } => {
             show(layer_remove(db.as_deref(), &id), json, "layer.remove");
         }
+        Commands::LayerColor {
+            id,
+            color,
+            db,
+            json,
+        } => {
+            show(
+                layer_color_set(db.as_deref(), &id, &color),
+                json,
+                "layer.color",
+            );
+        }
         Commands::GeocodeSearch {
             query,
             limit,
@@ -1492,7 +1543,7 @@ mod tests {
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(tools.len(), 16);
+        assert_eq!(tools.len(), 17);
     }
 
     #[test]
@@ -1559,6 +1610,37 @@ mod tests {
     #[test]
     fn wkt_show_bad_input_is_typed_error() {
         let result = call_tool("wkt.show", &json!({"wkt": "POINT (16.3)"}), None);
+        assert!(content_text(&result).contains("invalid input"));
+    }
+
+    #[test]
+    fn layer_color_roundtrip_in_temp_db() {
+        let db = temp_db("color");
+        let _ = call_tool(
+            "layer.add",
+            &json!({"id": "c1", "name": "C1", "db": db}),
+            None,
+        );
+        let set = call_tool(
+            "layer.color",
+            &json!({"id": "c1", "color": "#ff0000", "db": db}),
+            None,
+        );
+        assert!(content_text(&set).contains("#ff0000"));
+        let listed = call_tool("layer.list", &json!({"db": db}), None);
+        assert!(content_text(&listed).contains("#ff0000"));
+        let cleared = call_tool(
+            "layer.color",
+            &json!({"id": "c1", "color": "", "db": db}),
+            None,
+        );
+        assert!(content_text(&cleared).contains("\"updated\":true"));
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn layer_color_bad_hex_is_typed_error() {
+        let result = call_tool("layer.color", &json!({"id": "c1", "color": "red"}), None);
         assert!(content_text(&result).contains("invalid input"));
     }
 
