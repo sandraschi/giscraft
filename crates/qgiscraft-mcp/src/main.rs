@@ -1772,6 +1772,30 @@ mod tests {
     }
 
     #[test]
+    fn processing_geodesic_circle_persists_to_temp_db() {
+        let db = temp_db("geodesic");
+        let result = call_tool(
+            "processing.geodesic",
+            &json!({"shape": "circle", "lng": 16.3738, "lat": 48.2082, "radius_m": 1000.0, "db": db}),
+            None,
+        );
+        let text = content_text(&result);
+        assert!(text.contains("geodesic-circle"));
+        assert!(text.contains("\"count\":1"));
+        let _ = std::fs::remove_file(temp_db("geodesic"));
+    }
+
+    #[test]
+    fn processing_geodesic_bad_shape_is_typed_error() {
+        let result = call_tool(
+            "processing.geodesic",
+            &json!({"shape": "square", "lng": 16.3, "lat": 48.2, "radius_m": 100.0}),
+            None,
+        );
+        assert!(content_text(&result).contains("circle, ellipse or line"));
+    }
+
+    #[test]
     fn layer_color_roundtrip_in_temp_db() {
         let db = temp_db("color");
         let _ = call_tool(
@@ -1866,30 +1890,6 @@ mod tests {
             None,
         );
         assert!(content_text(&result).contains("invalid input"));
-    }
-
-    #[test]
-    fn processing_geodesic_circle_persists_to_temp_db() {
-        let db = temp_db("geodesic");
-        let result = call_tool(
-            "processing.geodesic",
-            &json!({"shape": "circle", "lng": 16.3738, "lat": 48.2082, "radius_m": 1000.0, "db": db}),
-            None,
-        );
-        let text = content_text(&result);
-        assert!(text.contains("geodesic-circle"));
-        assert!(text.contains("\"count\":1"));
-        let _ = std::fs::remove_file(temp_db("geodesic"));
-    }
-
-    #[test]
-    fn processing_geodesic_bad_shape_is_typed_error() {
-        let result = call_tool(
-            "processing.geodesic",
-            &json!({"shape": "square", "lng": 16.3, "lat": 48.2, "radius_m": 100.0}),
-            None,
-        );
-        assert!(content_text(&result).contains("circle, ellipse or line"));
     }
 
     fn content_text(result: &Value) -> String {
