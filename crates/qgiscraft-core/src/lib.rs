@@ -11,6 +11,7 @@
 #![deny(clippy::todo)]
 
 pub mod control;
+pub mod doppler;
 pub mod error;
 pub mod geo;
 pub mod geocode;
@@ -43,6 +44,7 @@ pub const CMD_PROCESSING_GRID: &str = "processing.grid";
 pub const CMD_PROCESSING_NEAREST: &str = "processing.nearest";
 pub const CMD_PROCESSING_GEODESIC: &str = "processing.geodesic";
 pub const CMD_LAYER_COLOR: &str = "layer.color";
+pub const CMD_DOPPLER_LOCATE: &str = "doppler.locate";
 pub const CMD_EXPORT_PNG: &str = "export.png";
 
 /// Bounded command bus. New capability = new variant + dispatch arm + test.
@@ -125,6 +127,17 @@ pub enum Command {
         layer_id: String,
         color: Option<String>,
     },
+    DopplerLocate {
+        path: String,
+        south: Option<f64>,
+        west: Option<f64>,
+        north: Option<f64>,
+        east: Option<f64>,
+        step_deg: Option<f64>,
+        top_n: Option<usize>,
+        terrain_m: Option<f64>,
+        output_layer: Option<String>,
+    },
     ExportPng {
         width: Option<u32>,
         height: Option<u32>,
@@ -149,7 +162,7 @@ pub async fn dispatch(cmd: Command) -> Value {
             "commands": [
                 CMD_STATUS, CMD_PROJECT_STATUS,
                 CMD_LAYER_ADD, CMD_LAYER_LIST, CMD_LAYER_REMOVE,
-                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_MAP_FORGE, CMD_WKT_SHOW,                 CMD_PROCESSING_GRID, CMD_PROCESSING_NEAREST, CMD_PROCESSING_GEODESIC, CMD_LAYER_COLOR, CMD_EXPORT_PNG,
+                CMD_GEOCODE_SEARCH, CMD_OVERPASS_QUERY, CMD_FEATURES_LIST, CMD_LAYER_IMPORT, CMD_PROCESSING_BUFFER, CMD_MAP_FORGE, CMD_WKT_SHOW,                 CMD_PROCESSING_GRID, CMD_PROCESSING_NEAREST, CMD_PROCESSING_GEODESIC, CMD_LAYER_COLOR, CMD_DOPPLER_LOCATE, CMD_EXPORT_PNG,
             ],
             "agent_contract": "CLI-first: every command supports --json; `mcp` subcommand mirrors the same dispatch over stdio",
         }),
@@ -624,6 +637,68 @@ pub async fn dispatch(cmd: Command) -> Value {
                 "note": "Core validation ok: persistence performed by L2 store or app control handler"
             })
         }
+        Command::DopplerLocate {
+            path,
+            south,
+            west,
+            north,
+            east,
+            step_deg,
+            top_n,
+            terrain_m,
+            output_layer,
+        } => {
+            if path.trim().is_empty() {
+                return json!({"error": "invalid input: path must not be empty", "op": "doppler.locate"});
+            }
+            let text = match tokio::fs::read_to_string(path.trim()).await {
+                Ok(t) => t,
+                Err(e) => {
+                    return json!({"error": format!("read failed: {e}"), "op": "doppler.locate"});
+                }
+            };
+            let cap = match doppler::parse_capture(&text) {
+                Ok(c) => c,
+                Err(e) => return json!({"error": e.to_string(), "op": "doppler.locate"}),
+            };
+            let (s, w, n, e) = match (south, west, north, east) {
+                (Some(s), Some(w), Some(n), Some(e)) => (s, w, n, e),
+                _ => {
+                    return json!({"error": "invalid input: doppler needs south/west/north/east", "op": "doppler.locate"});
+                }
+            };
+            let ranked = match doppler::locate(
+                s,
+                w,
+                n,
+                e,
+                step_deg.unwrap_or(0.01),
+                top_n.unwrap_or(10),
+                terrain_m.unwrap_or(200.0),
+                &cap,
+            ) {
+                Ok(r) => r,
+                Err(e) => return json!({"error": e.to_string(), "op": "doppler.locate"}),
+            };
+            let out_id = match output_layer {
+                Some(id) if !id.trim().is_empty() => id.trim().to_string(),
+                _ => "doppler-hits".to_string(),
+            };
+            let hits: Vec<Value> = ranked
+                .iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    json!({"name": format!("cand-{} ({:.2})", i + 1, p.score), "kind": "point", "lng": p.lng, "lat": p.lat, "geom": Value::Null})
+                })
+                .collect();
+            json!({
+                "op": "doppler.locate",
+                "layer": out_id,
+                "name": out_id,
+                "count": hits.len(),
+                "hits": hits,
+            })
+        }
         Command::ExportPng {
             width: _,
             height: _,
@@ -645,7 +720,24 @@ mod tests {
             .and_then(|c| c.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(cmds.len(), 17);
+        assert_eq!(cmds.len(), 18);
+    }
+
+    #[tokio::test]
+    async fn doppler_locate_missing_file_is_typed_error() {
+        let v = dispatch(Command::DopplerLocate {
+            path: "definitely-not-here-doppler-xyz.json".to_string(),
+            south: None,
+            west: None,
+            north: None,
+            east: None,
+            step_deg: None,
+            top_n: None,
+            terrain_m: None,
+            output_layer: None,
+        })
+        .await;
+        assert!(v.get("error").is_some());
     }
 
     #[tokio::test]
