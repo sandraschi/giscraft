@@ -94,7 +94,6 @@ fn predict(
     let mut t_em = t_obs;
     let mut dx = 0.0;
     let mut dy = 0.0;
-    let mut dz = 0.0;
     let mut r = 0.0;
     for _ in 0..2 {
         // Clamp: emission before the first (or after the last) report uses
@@ -103,7 +102,7 @@ fn predict(
         let (lng, lat, alt, _, _) = interp_pos(track, tq)?;
         dx = (clng - lng) * mpd_lng;
         dy = (clat - lat) * 111_320.0;
-        dz = terrain_m - alt;
+        let dz = terrain_m - alt;
         r = (dx * dx + dy * dy + dz * dz).sqrt();
         if !r.is_finite() || r <= 0.0 {
             return Err(GisError::InvalidInput("degenerate range".to_string()));
@@ -225,30 +224,32 @@ pub fn parse_capture(text: &str) -> Result<DopplerCapture, GisError> {
     Ok(cap)
 }
 
+/// Rank parameters: bbox, grid step, result cap, ground elevation.
+pub struct LocateParams {
+    pub south: f64,
+    pub west: f64,
+    pub north: f64,
+    pub east: f64,
+    pub step_deg: f64,
+    pub top_n: usize,
+    pub terrain_m: f64,
+}
+
 /// Rank grid candidates over a bbox. Score = mean over curves of the best
 /// per-track correlation. Returns the top `top_n` (1..100).
-pub fn locate(
-    south: f64,
-    west: f64,
-    north: f64,
-    east: f64,
-    step_deg: f64,
-    top_n: usize,
-    terrain_m: f64,
-    cap: &DopplerCapture,
-) -> Result<Vec<ScoredPoint>, GisError> {
-    let bbox = crate::geo::Bbox::new(west, south, east, north)?;
-    if !step_deg.is_finite() || step_deg < 0.0005 || step_deg > 1.0 {
+pub fn locate(params: &LocateParams, cap: &DopplerCapture) -> Result<Vec<ScoredPoint>, GisError> {
+    let bbox = crate::geo::Bbox::new(params.west, params.south, params.east, params.north)?;
+    if !params.step_deg.is_finite() || params.step_deg < 0.0005 || params.step_deg > 1.0 {
         return Err(GisError::InvalidInput(
             "step_deg must be 0.0005..1.0".to_string(),
         ));
     }
-    if !terrain_m.is_finite() || terrain_m < -500.0 || terrain_m > 9000.0 {
+    if !params.terrain_m.is_finite() || params.terrain_m < -500.0 || params.terrain_m > 9000.0 {
         return Err(GisError::InvalidInput("terrain_m out of range".to_string()));
     }
-    let top_n = top_n.clamp(1, MAX_TOP_N);
-    let rows = ((bbox.max_lat - bbox.min_lat) / step_deg).ceil() as usize;
-    let cols = ((bbox.max_lng - bbox.min_lng) / step_deg).ceil() as usize;
+    let top_n = params.top_n.clamp(1, MAX_TOP_N);
+    let rows = ((bbox.max_lat - bbox.min_lat) / params.step_deg).ceil() as usize;
+    let cols = ((bbox.max_lng - bbox.min_lng) / params.step_deg).ceil() as usize;
     let cells = rows
         .checked_mul(cols)
         .ok_or_else(|| GisError::InvalidInput("grid too large".to_string()))?;
@@ -260,13 +261,13 @@ pub fn locate(
     let mut scored: Vec<ScoredPoint> = Vec::new();
     for r in 0..rows {
         for c in 0..cols {
-            let clng = bbox.min_lng + (c as f64 + 0.5) * step_deg;
-            let clat = bbox.min_lat + (r as f64 + 0.5) * step_deg;
+            let clng = bbox.min_lng + (c as f64 + 0.5) * params.step_deg;
+            let clat = bbox.min_lat + (r as f64 + 0.5) * params.step_deg;
             let mut total = 0.0;
             for curve in &cap.curves {
                 let mut best = f64::NEG_INFINITY;
                 for track in &cap.tracks {
-                    match score_curve(track, curve, clng, clat, terrain_m) {
+                    match score_curve(track, curve, clng, clat, params.terrain_m) {
                         Ok(s) => {
                             if s > best {
                                 best = s;
@@ -299,6 +300,18 @@ pub fn locate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn params(south: f64, west: f64, north: f64, east: f64, step_deg: f64) -> LocateParams {
+        LocateParams {
+            south,
+            west,
+            north,
+            east,
+            step_deg,
+            top_n: 5,
+            terrain_m: 200.0,
+        }
+    }
 
     fn straight_track() -> Vec<TrackSample> {
         // Eastbound prop at 60 m/s, 500 m MSL, one sample/sec for 60 s.
@@ -349,7 +362,7 @@ mod tests {
             tracks: vec![track],
             curves: vec![curve],
         };
-        let out = locate(48.19, 16.31, 48.23, 16.35, 0.005, 5, 200.0, &cap);
+        let out = locate(&params(48.19, 16.31, 48.23, 16.35, 0.005), &cap);
         assert!(out.is_ok());
         if let Ok(out) = out {
             assert_eq!(out.len(), 5);
@@ -388,7 +401,7 @@ mod tests {
                 samples: vec![(0.0, 100.0), (1.0, 101.0), (2.0, 102.0)],
             }],
         };
-        let out_neg = locate(48.19, 16.31, 48.23, 16.35, 0.01, 3, 200.0, &cap_neg);
+        let out_neg = locate(&params(48.19, 16.31, 48.23, 16.35, 0.01), &cap_neg);
         assert!(out_neg.is_ok());
         if let Ok(out) = out_neg {
             assert!(out.iter().all(|p| p.score < 0.0));
@@ -398,7 +411,7 @@ mod tests {
             tracks: vec![straight_track()],
             curves: vec![curve_from_truth(16.33, 48.21, 120.0)],
         };
-        assert!(locate(48.23, 16.31, 48.19, 16.35, 0.01, 3, 200.0, &cap_good).is_err());
-        assert!(locate(48.19, 16.31, 48.23, 16.35, 5.0, 3, 200.0, &cap_good).is_err());
+        assert!(locate(&params(48.23, 16.31, 48.19, 16.35, 0.01), &cap_good).is_err());
+        assert!(locate(&params(48.19, 16.31, 48.23, 16.35, 5.0), &cap_good).is_err());
     }
 }

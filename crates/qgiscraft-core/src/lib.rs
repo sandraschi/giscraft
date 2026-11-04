@@ -668,13 +668,15 @@ pub async fn dispatch(cmd: Command) -> Value {
                 }
             };
             let ranked = match doppler::locate(
-                s,
-                w,
-                n,
-                e,
-                step_deg.unwrap_or(0.01),
-                top_n.unwrap_or(10),
-                terrain_m.unwrap_or(200.0),
+                &doppler::LocateParams {
+                    south: s,
+                    west: w,
+                    north: n,
+                    east: e,
+                    step_deg: step_deg.unwrap_or(0.01),
+                    top_n: top_n.unwrap_or(10),
+                    terrain_m: terrain_m.unwrap_or(200.0),
+                },
                 &cap,
             ) {
                 Ok(r) => r,

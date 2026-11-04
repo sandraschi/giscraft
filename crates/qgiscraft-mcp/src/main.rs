@@ -242,6 +242,31 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Doppler geolocation: rank grid candidates vs ADS-B tracks (persists to db)
+    DopplerLocate {
+        #[arg(long)]
+        path: String,
+        #[arg(long)]
+        south: Option<f64>,
+        #[arg(long)]
+        west: Option<f64>,
+        #[arg(long)]
+        north: Option<f64>,
+        #[arg(long)]
+        east: Option<f64>,
+        #[arg(long)]
+        step_deg: Option<f64>,
+        #[arg(long)]
+        top_n: Option<usize>,
+        #[arg(long)]
+        terrain_m: Option<f64>,
+        #[arg(long)]
+        output_layer: Option<String>,
+        #[arg(long)]
+        db: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Run the MCP server over stdio (logs on stderr, JSON-RPC on stdout).
     /// With --connect PORT, the DB-touching tools run in the live app.
     Mcp {
@@ -586,6 +611,7 @@ fn tools_list() -> Value {
             {"name": "processing.geodesic", "description": "True-distance shape: circle (radius_m), ellipse (major_m/minor_m/bearing_deg) or line (lng2/lat2) around lng/lat; segments, output_layer, db optional; persists to db", "inputSchema": {"type": "object", "properties": {"shape": {"type": "string"}, "lng": {"type": "number"}, "lat": {"type": "number"}, "radius_m": {"type": "number"}, "major_m": {"type": "number"}, "minor_m": {"type": "number"}, "bearing_deg": {"type": "number"}, "lng2": {"type": "number"}, "lat2": {"type": "number"}, "segments": {"type": "integer"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["shape", "lng", "lat"]}},
             {"name": "map.forge", "description": "Forge a map from a MapSpec JSON file: path required; live=false dry-runs QL per layer else executes; ingest=true writes live hits to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "live": {"type": "boolean"}, "ingest": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["path"]}},
             {"name": "wkt.show", "description": "Show WKT geometry as a layer: wkt required (POINT/LINESTRING/POLYGON + MULTI, 2D only); layer_id, db optional; persists to db", "inputSchema": {"type": "object", "properties": {"wkt": {"type": "string"}, "layer_id": {"type": "string"}, "db": {"type": "string"}}, "required": ["wkt"]}},
+            {"name": "doppler.locate", "description": "Doppler geolocation: rank grid candidates by matching curves to ADS-B tracks; path to capture JSON required; bbox, step_deg, top_n, terrain_m, output_layer, db optional; persists top candidates to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "south": {"type": "number"}, "west": {"type": "number"}, "north": {"type": "number"}, "east": {"type": "number"}, "step_deg": {"type": "number"}, "top_n": {"type": "integer"}, "terrain_m": {"type": "number"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["path"]}},
             {"name": "export.png", "description": "Export map PNG (Phase 1 render path)", "inputSchema": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}}},
         ]
     })
@@ -764,6 +790,45 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
             let geom = infer_geom_type(&hits);
             let stored = ingest_hits(db.as_deref(), layer, name, "wkt", geom, &hits, "wkt.show");
             json!({"wkt_result": out, "ingest": stored})
+        }
+        "doppler.locate" => {
+            let out = run(Command::DopplerLocate {
+                path: str_arg(args, "path").unwrap_or_default(),
+                south: args.get("south").and_then(|v| v.as_f64()),
+                west: args.get("west").and_then(|v| v.as_f64()),
+                north: args.get("north").and_then(|v| v.as_f64()),
+                east: args.get("east").and_then(|v| v.as_f64()),
+                step_deg: args.get("step_deg").and_then(|v| v.as_f64()),
+                top_n: args
+                    .get("top_n")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|n| usize::try_from(n).ok()),
+                terrain_m: args.get("terrain_m").and_then(|v| v.as_f64()),
+                output_layer: str_arg(args, "output_layer"),
+            });
+            if out.get("error").is_some() {
+                return json!({"content": [{"type": "text", "text": out.to_string()}]});
+            }
+            let db = str_arg(args, "db");
+            let layer = out
+                .get("layer")
+                .and_then(|v| v.as_str())
+                .unwrap_or("doppler-hits");
+            let name = out
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("doppler-hits");
+            let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+            let stored = ingest_hits(
+                db.as_deref(),
+                layer,
+                name,
+                "doppler",
+                "point",
+                &hits,
+                "doppler.locate",
+            );
+            json!({"doppler_result": out, "ingest": stored})
         }
         "processing.buffer" => {
             let layer_id = str_arg(args, "layer_id").unwrap_or_default();
@@ -1527,6 +1592,60 @@ fn main() {
                 );
             }
         }
+        Commands::DopplerLocate {
+            path,
+            south,
+            west,
+            north,
+            east,
+            step_deg,
+            top_n,
+            terrain_m,
+            output_layer,
+            db,
+            json,
+        } => {
+            let out = run(Command::DopplerLocate {
+                path,
+                south,
+                west,
+                north,
+                east,
+                step_deg,
+                top_n,
+                terrain_m,
+                output_layer,
+            });
+            if out.get("error").is_some() {
+                show(out, json, "doppler.locate");
+            } else {
+                let layer = out
+                    .get("layer")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("doppler-hits")
+                    .to_string();
+                let name = out
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("doppler-hits")
+                    .to_string();
+                let hits = out.get("hits").cloned().unwrap_or(Value::Null);
+                let stored = ingest_hits(
+                    db.as_deref(),
+                    &layer,
+                    &name,
+                    "doppler",
+                    "point",
+                    &hits,
+                    "doppler.locate",
+                );
+                show(
+                    json!({"doppler_result": out, "ingest": stored}),
+                    json,
+                    "doppler.locate",
+                );
+            }
+        }
         Commands::Mcp { connect } => run_mcp_stdio(connect),
     }
 }
@@ -1543,7 +1662,7 @@ mod tests {
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(tools.len(), 17);
+        assert_eq!(tools.len(), 18);
     }
 
     #[test]
@@ -1611,6 +1730,45 @@ mod tests {
     fn wkt_show_bad_input_is_typed_error() {
         let result = call_tool("wkt.show", &json!({"wkt": "POINT (16.3)"}), None);
         assert!(content_text(&result).contains("invalid input"));
+    }
+
+    #[test]
+    fn doppler_locate_persists_candidates_to_temp_db() {
+        let mut cap_path = std::env::temp_dir();
+        cap_path.push(format!("qgiscraft-test-cap-{}.json", std::process::id()));
+        let mut doc = String::from("{\"tracks\": [[");
+        for i in 0..30 {
+            if i > 0 {
+                doc.push(',');
+            }
+            doc.push_str(&format!(
+                "{{\"t\":{i},\"lng\":{},\"lat\":48.2,\"alt_m\":500.0,\"speed_ms\":60.0,\"heading_deg\":90.0}}",
+                16.30 + i as f64 * 0.001
+            ));
+        }
+        doc.push_str("]], \"curves\": [{\"f0\": 120.0, \"samples\": [[5.0,125.0],[10.0,122.0],[15.0,118.0],[20.0,114.0],[25.0,110.0]]}]}");
+        let _ = std::fs::write(&cap_path, &doc);
+        let db = temp_db("doppler");
+        let result = call_tool(
+            "doppler.locate",
+            &json!({"path": cap_path.to_string_lossy().to_string(), "south": 48.19, "west": 16.31, "north": 48.23, "east": 16.35, "step_deg": 0.01, "top_n": 5, "db": db}),
+            None,
+        );
+        let text = content_text(&result);
+        assert!(text.contains("doppler-hits"));
+        assert!(text.contains("\"count\":5"));
+        let _ = std::fs::remove_file(&cap_path);
+        let _ = std::fs::remove_file(temp_db("doppler"));
+    }
+
+    #[test]
+    fn doppler_locate_missing_file_is_typed_error() {
+        let result = call_tool(
+            "doppler.locate",
+            &json!({"path": "definitely-not-here-doppler-xyz.json", "south": 48.19, "west": 16.31, "north": 48.23, "east": 16.35}),
+            None,
+        );
+        assert!(content_text(&result).contains("read failed"));
     }
 
     #[test]
