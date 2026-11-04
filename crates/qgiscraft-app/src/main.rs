@@ -59,6 +59,18 @@ enum Dialog {
         target: String,
         output: String,
     },
+    Geodesic {
+        shape: String,
+        lng: String,
+        lat: String,
+        radius_m: String,
+        major_m: String,
+        minor_m: String,
+        bearing: String,
+        lng2: String,
+        lat2: String,
+        layer_id: String,
+    },
     Buffer {
         radius_m: String,
     },
@@ -749,6 +761,132 @@ impl QgisCraftApp {
         self.selected = Some(out_id.clone());
         self.refresh();
         self.fit_only = Some(out_id.clone());
+        self.fit_requested = true;
+        self.push_log(outcome);
+    }
+
+    /// Processing toolbox > Geodesic shape: true-distance circle/ellipse/line.
+    fn submit_geodesic(
+        &mut self,
+        args: (
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+        ),
+    ) {
+        let (shape, lng, lat, radius_m, major_m, minor_m, bearing, lng2, lat2, layer_id) = args;
+        let shape = shape.trim().to_ascii_lowercase();
+        if shape != "circle" && shape != "ellipse" && shape != "line" {
+            self.push_log("geodesic failed: shape must be circle, ellipse or line".to_string());
+            return;
+        }
+        let mut num = |t: &str, label: &str| -> Option<f64> {
+            match t.trim().parse::<f64>() {
+                Ok(v) if v.is_finite() => Some(v),
+                _ => {
+                    self.push_log(format!("geodesic failed: bad {label}"));
+                    None
+                }
+            }
+        };
+        let (Some(x), Some(y)) = (num(&lng, "center lng"), num(&lat, "center lat")) else {
+            return;
+        };
+        let ring = if shape == "circle" {
+            let Some(r) = num(&radius_m, "radius") else {
+                return;
+            };
+            match qgiscraft_core::processing::geodesic_circle(x, y, r, 64) {
+                Ok(ring) => ring,
+                Err(e) => {
+                    self.push_log(format!("geodesic failed: {e}"));
+                    return;
+                }
+            }
+        } else if shape == "ellipse" {
+            let (Some(a), Some(b), Some(br)) = (
+                num(&major_m, "major"),
+                num(&minor_m, "minor"),
+                num(&bearing, "bearing"),
+            ) else {
+                return;
+            };
+            match qgiscraft_core::processing::geodesic_ellipse(x, y, a, b, br, 64) {
+                Ok(ring) => ring,
+                Err(e) => {
+                    self.push_log(format!("geodesic failed: {e}"));
+                    return;
+                }
+            }
+        } else {
+            let (Some(x2), Some(y2)) = (num(&lng2, "end lng"), num(&lat2, "end lat")) else {
+                return;
+            };
+            match qgiscraft_core::processing::xy_to_line(x, y, x2, y2) {
+                Ok(pts) => pts,
+                Err(e) => {
+                    self.push_log(format!("geodesic failed: {e}"));
+                    return;
+                }
+            }
+        };
+        let geom_kind = if shape == "line" { "line" } else { "polygon" };
+        let mut closed = ring.clone();
+        if shape != "line" {
+            if let Some(first) = ring.first().copied() {
+                if closed.last() != Some(&first) {
+                    closed.push(first);
+                }
+            }
+        }
+        let inner: Vec<String> = closed.iter().map(|(a, b)| format!("[{a},{b}]")).collect();
+        let coords = if shape == "line" {
+            format!("[{}]", inner.join(","))
+        } else {
+            format!("[[{}]]", inner.join(","))
+        };
+        let geojson = if geom_kind == "line" {
+            format!("{{\"type\":\"LineString\",\"coordinates\":{coords}}}")
+        } else {
+            format!("{{\"type\":\"Polygon\",\"coordinates\":{coords}}}")
+        };
+        let rows = vec![store::StoredFeature {
+            layer_id: layer_id.clone(),
+            name: format!("{shape}-1"),
+            kind: "way".to_string(),
+            lng: x,
+            lat: y,
+            geom_json: Some(geojson),
+        }];
+        let outcome = match store::open_default() {
+            Ok(conn) => {
+                let layer = store::StoredLayer {
+                    id: layer_id.clone(),
+                    name: layer_id.clone(),
+                    source: "processing:geodesic".to_string(),
+                    geom_type: geom_kind.to_string(),
+                    crs: "EPSG:4326".to_string(),
+                    visible: true,
+                };
+                match store::add_layer(&conn, &layer)
+                    .and_then(|()| store::replace_features(&conn, &layer_id, &rows).map(|_| ()))
+                {
+                    Ok(()) => format!("geodesic: {shape} into {layer_id}"),
+                    Err(e) => format!("geodesic ingest failed: {e}"),
+                }
+            }
+            Err(e) => format!("db open failed: {e}"),
+        };
+        self.selected = Some(layer_id.clone());
+        self.refresh();
+        self.fit_only = Some(layer_id.clone());
         self.fit_requested = true;
         self.push_log(outcome);
     }
@@ -1507,6 +1645,80 @@ impl QgisCraftApp {
                     keep = false;
                 }
             }
+            Dialog::Geodesic {
+                shape,
+                lng,
+                lat,
+                radius_m,
+                major_m,
+                minor_m,
+                bearing,
+                lng2,
+                lat2,
+                layer_id,
+            } => {
+                let mut submit = false;
+                let mut cancel = false;
+                egui::Window::new("Geodesic shape").show(ui.ctx(), |ui| {
+                    ui.label("Shape: circle, ellipse or line:");
+                    ui.text_edit_singleline(shape);
+                    ui.horizontal(|ui| {
+                        ui.label("Center lng:");
+                        ui.text_edit_singleline(lng);
+                        ui.label("Center lat:");
+                        ui.text_edit_singleline(lat);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Circle radius (m):");
+                        ui.text_edit_singleline(radius_m);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Ellipse major/minor/bearing:");
+                        ui.text_edit_singleline(major_m);
+                        ui.text_edit_singleline(minor_m);
+                        ui.text_edit_singleline(bearing);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Line end lng/lat:");
+                        ui.text_edit_singleline(lng2);
+                        ui.text_edit_singleline(lat2);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Layer id:");
+                        ui.text_edit_singleline(layer_id);
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Build").clicked() {
+                            submit = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+                if submit {
+                    let args = (
+                        shape.clone(),
+                        lng.clone(),
+                        lat.clone(),
+                        radius_m.clone(),
+                        major_m.clone(),
+                        minor_m.clone(),
+                        bearing.clone(),
+                        lng2.clone(),
+                        lat2.clone(),
+                        if layer_id.trim().is_empty() {
+                            "geodesic".to_string()
+                        } else {
+                            layer_id.trim().to_string()
+                        },
+                    );
+                    self.submit_geodesic(args);
+                    keep = false;
+                } else if cancel {
+                    keep = false;
+                }
+            }
             Dialog::Buffer { radius_m } => {
                 let mut cancel = false;
                 let mut submit: Option<f64> = None;
@@ -2203,6 +2415,7 @@ impl eframe::App for QgisCraftApp {
                 ("Buffer points", "Circle polygons around selected points"),
                 ("Create grid", "Rect or hex grid over a bbox"),
                 ("Nearest neighbor join", "Hub lines to closest features"),
+                ("Geodesic shape", "True-distance circle, ellipse or line"),
             ] {
                 if !query.is_empty()
                     && !name.to_lowercase().contains(&query)
@@ -2252,6 +2465,27 @@ impl eframe::App for QgisCraftApp {
                             target: String::new(),
                             output: String::new(),
                         },
+                        "Geodesic shape" => {
+                            let (lng, lat) = match self.view_bbox() {
+                                Some(b) => (
+                                    ((b.min_lng + b.max_lng) / 2.0).to_string(),
+                                    ((b.min_lat + b.max_lat) / 2.0).to_string(),
+                                ),
+                                None => ("16.3738".to_string(), "48.2082".to_string()),
+                            };
+                            Dialog::Geodesic {
+                                shape: "circle".to_string(),
+                                lng,
+                                lat,
+                                radius_m: "1000".to_string(),
+                                major_m: "1000".to_string(),
+                                minor_m: "500".to_string(),
+                                bearing: "0".to_string(),
+                                lng2: String::new(),
+                                lat2: String::new(),
+                                layer_id: "geodesic".to_string(),
+                            }
+                        }
                         _ => Dialog::Buffer {
                             radius_m: "500".to_string(),
                         },
