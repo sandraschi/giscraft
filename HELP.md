@@ -1,6 +1,6 @@
 # QGISCraft Comprehensive Manual & Spatial Intelligence Handbook
 
-**QGISCraft Sovereign Spatial Intelligence Engine & QGIS Clean-Room Implementation**  
+**QGISCraft Local-First Spatial Intelligence Engine & QGIS Clean-Room Implementation**  
 **Version**: 0.2.0  
 **Domain**: Geographic Information Systems (GIS), Geodesy, Chrono-Cartography, Overpass/OSM Harvesting, Doppler Signal Triangulation, Vector Spatial Processing  
 **Control Port**: `11254` (Backend + MCP HTTP) / `11253` (Web Interface) / Pure Native SQLite Project Track
@@ -27,7 +27,7 @@ At its core, GIS links **location** (where things are on Earth) with **attribute
 
 **[QGIS](https://qgis.org)** (formerly *Quantum GIS*, founded in 2002 by Gary Sherman) is the world’s leading open-source desktop Geographic Information System. 
 
-It is the sovereign open-source counterpart to proprietary commercial cartography software (chiefly **Esri ArcGIS Desktop / ArcGIS Pro**, which costs \$1,500 to \$10,000+ per seat per year). QGIS is maintained by an international volunteer foundation and is renowned for its standard layout:
+It is the open-source counterpart to proprietary commercial cartography software (chiefly **Esri ArcGIS Desktop / ArcGIS Pro**, which costs \$1,500 to \$10,000+ per seat per year). QGIS is maintained by an international volunteer foundation and is renowned for its standard layout:
 - **Menu Bar**: `Project`, `Edit`, `View`, `Layer`, `Settings`, `Plugins`, `Vector`, `Raster`, `Processing`, `Help`.
 - **Docks**: Left-hand Browser tree and Layers list with visibility toggles and z-index ordering.
 - **Interactive Canvas**: Pan-and-zoom map viewport with projection engine, scale bar, and coordinate readout.
@@ -44,15 +44,15 @@ It is the sovereign open-source counterpart to proprietary commercial cartograph
 
 ## 3. What Is QGISCraft?
 
-**QGISCraft** is a sovereign, clean-room 1:1 QGIS shell implementation written from the ground up in pure **Rust**.
+**QGISCraft** is a local-first, clean-room 1:1 QGIS shell implementation written from the ground up in pure **Rust**.
 
 ### Why QGISCraft?
 Traditional QGIS is a massive C++ / Qt5 / Python codebase spanning over 20 years of legacy dependencies (GDAL, PROJ, GEOS, PyQGIS, SpatiaLite). It is heavy to embed, slow to spin up headlessly, and difficult for autonomous AI agents to drive cleanly.
 
-**QGISCraft solves this by decoupling the QGIS experience into a modern sovereign architecture:**
+**QGISCraft solves this by decoupling the QGIS experience into a modern local-first architecture:**
 1. **Preserves QGIS Muscle Memory**: Retains the iconic menus, shortcuts (`Ctrl+Z`, `Ctrl+Shift+K`, `F5`, `Ctrl+Alt+S`), left-hand Browser & Layers docks, and canvas behavior.
 2. **Pure-Rust Zero-Panic Core**: Built with `#![deny(clippy::unwrap_used)]` zero-panic containment.
-3. **Database-as-Project (`.qgz` equivalent)**: The entire project state (layers, styles, geometries, CRS, caches) is stored in a single sovereign SQLite database file (`qgiscraft.db`), eliminating fragmented project files.
+3. **Database-as-Project (`.qgz` equivalent)**: The entire project state (layers, styles, geometries, CRS, caches) is stored in a single local SQLite database file (`qgiscraft.db`), eliminating fragmented project files.
 4. **Agentic AI & MCP-First**: Every single UI action corresponds directly to a typed variant on the `Command` bus. An AI assistant (via Anthropic/DeepMind MCP stdio) can geocode places, execute live Overpass queries, compute geodesic buffers, and export maps with the exact same authority as a human clicking the mouse.
 
 ---
