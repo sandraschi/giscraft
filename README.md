@@ -90,3 +90,7 @@ Windows 10/11 64-bit (primary), Rust stable via rustup, MSVC linker
 
 MIT OR Apache-2.0. QGIS itself is GPLv2+ and not included; map tiles
 (c) OpenStreetMap contributors (ODbL) — attribution shown in-app.
+
+## Lineage — the Storytold craft-app pattern
+
+Storytold ArtCraft ([storytold/artcraft](https://github.com/storytold/artcraft) — "the IDE for artists") was the starting point. The 16 craft apps in the Storytold stable each ship one binary that is both the human CLI and the agent MCP server (stdio), headless-first, with `run.json` + report artifacts. That modus operandi and harness is what this repo implements; the code here is independent, the pattern is shared.
