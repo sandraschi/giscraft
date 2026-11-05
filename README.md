@@ -91,6 +91,19 @@ Windows 10/11 64-bit (primary), Rust stable via rustup, MSVC linker
 MIT OR Apache-2.0. QGIS itself is GPLv2+ and not included; map tiles
 (c) OpenStreetMap contributors (ODbL) — attribution shown in-app.
 
+## Status — does today / next week / non-goals
+
+**Does today:** 5 crates + xtask; 25 docs files; 133 test fns; justfile;
+clone-shell GUI (QGIS muscle memory) + headless MCP/CLI (9 tools);
+`--smoke` BMP map preview; keyless Photon/Overpass with offline demo.
+
+**Next week:** 3 democraft recipes (geocode-layer, overpass-fenced,
+render-preview); travelcraft boundary paragraph; live-service
+version/rate pinning.
+
+**Non-goals:** not full QGIS parity (shell only, on purpose); web track
+reserved, not built.
+
 ## Lineage — the Storytold craft-app pattern
 
 Storytold ArtCraft ([storytold/artcraft](https://github.com/storytold/artcraft) — "the IDE for artists") was the starting point. The 16 craft apps in the Storytold stable each ship one binary that is both the human CLI and the agent MCP server (stdio), headless-first, with `run.json` + report artifacts. That modus operandi and harness is what this repo implements; the code here is independent, the pattern is shared.
