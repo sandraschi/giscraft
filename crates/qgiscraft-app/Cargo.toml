@@ -1,12 +1,12 @@
 [package]
-name = "qgiscraft-app"
+name = "qgiscraft"
 version = "0.1.0"
 edition = "2021"
 description = "L3 native egui clone (QGIS muscle-memory shell, in-process dispatch)"
 license = "MIT OR Apache-2.0"
 
 [[bin]]
-name = "qgiscraft-app"
+name = "qgiscraft"
 path = "src/main.rs"
 
 [dependencies]
@@ -20,3 +20,4 @@ qgiscraft-store = { path = "../qgiscraft-store" }
 
 [lints]
 workspace = true
+
