@@ -43,7 +43,7 @@ webapp parallel on 11253/11254 for users who never learned QGIS.
   (Earlier doc claimed L2 "only dispatches Command IDs" - no longer true
   since 0.2, and that is intentional: it keeps core dispatch tests
   hermetic without temp-DB plumbing.)
-- L3 `qgiscraft-app`: eframe/egui native clone. Owns the project DB file
+- L3 `qgiscraft`: eframe/egui native clone. Owns the project DB file
   directly (open/seed/list/add/remove/visible persist); calls core
   `project`/`project()` math in-process for rendering, never shells out
   to the MCP binary, never uses local HTTP/JSON-RPC for the desktop path.
@@ -81,3 +81,13 @@ webapp parallel on 11253/11254 for users who never learned QGIS.
 - [ ] Round-trip serialization test for any new schema.
 - [ ] `tools/list` + `tools/call` smoke-tested over stdio with byte-exact framing.
 - [ ] CHANGELOG.md checkpoint line added.
+
+## 6. Repo hygiene (fleet rules)
+
+- Line endings: LF only, everywhere (enforced by `.gitattributes`; `*.bat` is the
+  single CRLF exception for cmd.exe). Set `core.autocrlf false` in this clone.
+  Never commit CRLF; mismatches trip commit hooks.
+- Single trunk: work lands on `main`. No long-lived agent branches, no leftover
+  WIP branches. If a short branch is unavoidable, merge or delete it in the same session.
+- No em dash characters in any file (docs, code, commit messages): use a plain
+  hyphen or restructure. They have corrupted file writes in the fleet toolchain.

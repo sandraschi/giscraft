@@ -4,15 +4,15 @@ QGIS-class GIS in pure Rust: a clean-room 1:1 clone shell for QGIS muscle
 memory, with a modern core, CLI + MCP first, and no 2005 backend cruft.
 
 **What for:** a workbench for asking questions of the world's free map
-(OpenStreetMap) and keeping the answers as your own map layers — scout
+(OpenStreetMap) and keeping the answers as your own map layers - scout
 locations, audit POIs, plan walks and hikes, verify what's really there.
-Type a question, get a layer, analyze it, export it — by hand or via an
+Type a question, get a layer, analyze it, export it - by hand or via an
 AI agent (MCP). Full picture: [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md).
 
 ## What this wraps
 
 **[QGIS](https://qgis.org)** (LTR 3.44), the free and open-source desktop GIS
-— the reference our menus, docks, canvas behavior and shortcuts are cloned
+- the reference our menus, docks, canvas behavior and shortcuts are cloned
 from, black-box. No QGIS code ships here and none is needed to run. Full
 picture: [docs/WRAPPEE.md](docs/WRAPPEE.md). Our plugin answer vs
 [plugins.qgis.org](https://plugins.qgis.org/): [docs/plugins.md](docs/plugins.md).
@@ -46,10 +46,10 @@ no `.mcpb` yet). It takes one command chain:
 ```powershell
 winget install Rustlang.Rustup
 # + "Desktop development with C++" (MSVC linker, required on Windows)
-cargo run -p qgiscraft-app --
+cargo run -p qgiscraft --
 ```
 
-Everything else — Claude Desktop wiring, env vars, verification prompt —
+Everything else - Claude Desktop wiring, env vars, verification prompt -
 is in [INSTALL.md](INSTALL.md). Developers: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Example Prompts
@@ -61,7 +61,7 @@ is in [INSTALL.md](INSTALL.md). Developers: [docs/DEVELOPMENT.md](docs/DEVELOPME
 > *(overpass.query key=amenity value=pharmacy + bbox, `--live --ingest`)*
 
 > "List the project layers with feature counts"
-> *(layer.list — sources, geometry, visibility, counts)*
+> *(layer.list - sources, geometry, visibility, counts)*
 
 ## Documentation
 
@@ -89,9 +89,9 @@ Windows 10/11 64-bit (primary), Rust stable via rustup, MSVC linker
 ## License
 
 MIT OR Apache-2.0. QGIS itself is GPLv2+ and not included; map tiles
-(c) OpenStreetMap contributors (ODbL) — attribution shown in-app.
+(c) OpenStreetMap contributors (ODbL) - attribution shown in-app.
 
-## Status — does today / next week / non-goals
+## Status - does today / next week / non-goals
 
 **Does today:** 5 crates + xtask; 25 docs files; 133 test fns; justfile;
 clone-shell GUI (QGIS muscle memory) + headless MCP/CLI (9 tools);
@@ -104,6 +104,6 @@ version/rate pinning.
 **Non-goals:** not full QGIS parity (shell only, on purpose); web track
 reserved, not built.
 
-## Lineage — the Storytold craft-app pattern
+## Lineage - the Storytold craft-app pattern
 
-Storytold ArtCraft ([storytold/artcraft](https://github.com/storytold/artcraft) — "the IDE for artists") was the starting point. The 16 craft apps in the Storytold stable each ship one binary that is both the human CLI and the agent MCP server (stdio), headless-first, with `run.json` + report artifacts. That modus operandi and harness is what this repo implements; the code here is independent, the pattern is shared.
+Storytold ArtCraft ([storytold/artcraft](https://github.com/storytold/artcraft) - "the IDE for artists") was the starting point. The 16 craft apps in the Storytold stable each ship one binary that is both the human CLI and the agent MCP server (stdio), headless-first, with `run.json` + report artifacts. That modus operandi and harness is what this repo implements; the code here is independent, the pattern is shared.

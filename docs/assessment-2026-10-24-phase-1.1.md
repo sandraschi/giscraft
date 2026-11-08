@@ -132,7 +132,7 @@ The dialogue between earlier findings and subsequent commits showcases healthy e
   - Phase 0.5: 28 tests
   - Phase 0.8: 39 tests
   - Phase 1.0: 48 tests
-  - **Phase 1.1: 54 tests** (11 app, 26 core, 9 mcp, 8 store) — all executing in under 0.15s.
+  - **Phase 1.1: 54 tests** (11 app, 26 core, 9 mcp, 8 store) - all executing in under 0.15s.
 - **Headless Map Render Verification**:
   - `qgiscraft-app --smoke` generates pixel-exact 24-bit BMP previews (`render_preview`) blending tiles and vector polygons, enabling automated headless visual regression testing.
 

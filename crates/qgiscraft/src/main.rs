@@ -1659,7 +1659,7 @@ impl QgisCraftApp {
                 let mut submit = false;
                 let mut cancel = false;
                 egui::Window::new("Zoom to coordinates").show(ui.ctx(), |ui| {
-                    ui.label("lat, lng — e.g. 48.2082, 16.3738 (N/S/E/W suffixes ok):");
+                    ui.label("lat, lng - e.g. 48.2082, 16.3738 (N/S/E/W suffixes ok):");
                     ui.text_edit_singleline(text);
                     ui.horizontal(|ui| {
                         if ui.button("Go").clicked() {
@@ -2428,13 +2428,9 @@ impl eframe::App for QgisCraftApp {
                         };
                     }
                 });
-                for menu in ["Edit"] {
-                    ui.menu_button(t(I18nKey::MenuEdit, loc), |ui| {
-                        ui.label(format!(
-                            "{menu} commands land with later phases (typed, not stubbed)"
-                        ));
-                    });
-                }
+                ui.menu_button(t(I18nKey::MenuEdit, loc), |ui| {
+                    ui.label("Edit commands land with later phases (typed, not stubbed)");
+                });
                 ui.menu_button(t(I18nKey::MenuPlugins, loc), |ui| {
                     if ui.button("Show WKT...").clicked() {
                         self.dialog = Dialog::Wkt {
@@ -2457,7 +2453,8 @@ impl eframe::App for QgisCraftApp {
                         .selected_text(label)
                         .show_ui(ui, |ui| {
                             for loc_item in qgiscraft_core::i18n::AppLocale::all() {
-                                let text = format!("{} {}", loc_item.flag(), loc_item.display_name());
+                                let text =
+                                    format!("{} {}", loc_item.flag(), loc_item.display_name());
                                 let _ = ui.selectable_value(&mut self.locale, *loc_item, text);
                             }
                         });
@@ -3541,7 +3538,7 @@ fn main() {
         }),
     );
     if let Err(e) = result {
-        eprintln!("qgiscraft-app exited: {e}");
+        eprintln!("qgiscraft exited: {e}");
     }
 }
 

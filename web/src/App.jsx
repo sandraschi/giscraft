@@ -111,7 +111,7 @@ export function App() {
     <div className="layout">
       <div className="header">
         <h1>qgiscraft console</h1>
-        <span className="status">Track B seed — same DB as the native app + MCP. Tiles: (c) OpenStreetMap contributors.</span>
+        <span className="status">Track B seed - same DB as the native app + MCP. Tiles: (c) OpenStreetMap contributors.</span>
       </div>
       <div className="sidebar">
         <h2>Layers</h2>

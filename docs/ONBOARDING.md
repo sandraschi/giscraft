@@ -4,9 +4,9 @@ No accounts, no keys, no money. Everything the app touches is keyless
 (Photon, Overpass, OSM tiles). The one optional install is QGIS itself,
 for side-by-side comparison.
 
-1. **Build & run** (see [INSTALL.md](../INSTALL.md)): `cargo run -p qgiscraft-app --`.
+1. **Build & run** (see [INSTALL.md](../INSTALL.md)): `cargo run -p qgiscraft --`.
    The app creates `qgiscraft.db` next to where you launched it.
-2. **Headless proof**: `cargo run -p qgiscraft-app -- --smoke` prints layers
+2. **Headless proof**: `cargo run -p qgiscraft -- --smoke` prints layers
    and writes a BMP map preview to temp. No window needed.
 3. **First live map**: ingest Vienna pharmacies via CLI (`--live --ingest`),
    then Fit data (or F5) in the app. Tiles stream in progressively.

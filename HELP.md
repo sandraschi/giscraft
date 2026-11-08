@@ -63,7 +63,7 @@ QGISCraft is structured into a modular multi-tier workspace:
 - **`crates/qgiscraft-core`**: The foundational GIS engine, spatial indexing, coordinate projection (EPSG:4326 $\leftrightarrow$ EPSG:3857), Overpass QL parser, and command bus.
 - **`crates/qgiscraft-store`**: SQLite-backed feature and layer storage with transactional commits.
 - **`crates/qgiscraft-mcp`**: High-performance stdio MCP server for agentic interaction and CLI (`qgiscraft-mcp`).
-- **`crates/qgiscraft-app`**: Native immediate-mode desktop studio built in Rust using `egui 0.37` and `eframe`.
+- **`crates/qgiscraft`**: Native immediate-mode desktop studio built in Rust using `egui 0.37` and `eframe`.
 
 ### Currently Implemented Features:
 1. **Keyless Geocoding**:

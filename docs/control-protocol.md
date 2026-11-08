@@ -13,18 +13,18 @@ artcraft contract (`designcraft --control`), trimmed to our surface.
 - No auth: enable only while you use it.
 - Replies: `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error"}`.
 
-`qgiscraft-app -- --control 7979`
+`qgiscraft -- --control 7979`
 
 ## Methods
 
 | Method | Params | Effect |
 |---|---|---|
-| `project.status` | — | db, CRS, layers, center, zoom, selection |
+| `project.status` | - | db, CRS, layers, center, zoom, selection |
 | `layer.add` | `id`, `name`, `source?`, `geom_type?`, `crs?` | Add via app (same DB), refreshes view model |
-| `layer.list` | — | Layers + visible + per-layer feature counts |
+| `layer.list` | - | Layers + visible + per-layer feature counts |
 | `layer.remove` | `id` | Remove + refresh |
-| `ui.inspect` | — | version, center, zoom, selection, layers, db, canvas size |
-| `map.fit` | `layer_id?` | Fit view next frame (`{"queued": true}` — async) |
+| `ui.inspect` | - | version, center, zoom, selection, layers, db, canvas size |
+| `map.fit` | `layer_id?` | Fit view next frame (`{"queued": true}` - async) |
 | `map.render` | `width?`, `height?`, `tiles?` | Headless BMP render to temp, returns `path` |
 
 `MCP --connect` forwards the four DB-touching tools

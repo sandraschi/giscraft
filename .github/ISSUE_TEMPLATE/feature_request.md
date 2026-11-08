@@ -17,7 +17,7 @@ with questions. -->
 
 ## Non-goals
 
-<!-- What this explicitly does NOT do. Mandatory — the boundary is the feature. -->
+<!-- What this explicitly does NOT do. Mandatory - the boundary is the feature. -->
 
 ## Craft fit
 

@@ -39,7 +39,7 @@ cargo test --workspace   # 56 tests, all offline
 
 - `AGENTS.md` in the repo root is normative (gates, seams, clean-room rules).
 - Workspace lints deny `unwrap_used`, `expect_used`, `panic`, `todo`,
-  `unimplemented` — every failure is a typed value, every test hermetic
+  `unimplemented` - every failure is a typed value, every test hermetic
   (unique temp DBs, no network in `cargo test`, no env mutation).
 - New capability = new `Command` + dispatch arm + unit test + MCP tool +
   CLI flag + menu entry. No stubs presented as done.

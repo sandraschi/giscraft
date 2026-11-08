@@ -28,7 +28,7 @@ A report without evidence cannot be triaged. Redact keys/tokens. -->
 
 - App/CLI version (`--version`):
 - OS / GPU (if rendering/GPU-related):
-- Backend present? (daemon / engine / keys — or was this a skip-with-receipt?):
+- Backend present? (daemon / engine / keys - or was this a skip-with-receipt?):
 
 ## Scope check
 

@@ -14,12 +14,12 @@ A capability that would be a QGIS plugin lands here as:
 2. An MCP tool + CLI subcommand in L2 (same dispatch),
 3. A menu entry in the egui app (real action, never a stub label).
 
-Precedent: QuickOSM (the most-installed Overpass plugin) was not ported —
+Precedent: QuickOSM (the most-installed Overpass plugin) was not ported -
 its *capability* was reimplemented natively as `overpass.query`
 (fenced builder, dry-run QL, live execute, `--ingest`).
 
 Full PyQGIS compatibility is explicitly out: it would mean embedding a
-Python runtime and reimplementing `qgis.core` — a second QGIS, with a second
+Python runtime and reimplementing `qgis.core` - a second QGIS, with a second
 set of 2005-era semantics. The storytold precedent agrees (the designcraft
 family does not run ExtendScript/UXP plugins either).
 

@@ -17,7 +17,7 @@ annotations can live after they leave this app.
 ## Standards that matter (GTFS and friends)
 
 GTFS is the *transit* world's interchange standard (stops, routes,
-timetables — published by agencies like Verkehrsverbund, consumed by every
+timetables - published by agencies like Verkehrsverbund, consumed by every
 routing app). The map world has an equivalent at every layer:
 
 - **OSM data model**: nodes (points), ways (lines/polygons), relations,
@@ -29,7 +29,7 @@ routing app). The map world has an equivalent at every layer:
   squares, OGC services, single-file vector tiles).
 - **EPSG:4326 vs EPSG:3857**: GPS coordinates (stored) vs web-map
   projection (drawn). We convert between them on every frame.
-- **ODbL license**: OSM data is free *with share-alike* — publish derived
+- **ODbL license**: OSM data is free *with share-alike* - publish derived
   data openly and attribute contributors (the app shows the (c) notice).
   Never copy from Google Maps into OSM; their license forbids it.
 
@@ -41,13 +41,13 @@ Rule of thumb: *facts about the world* belong in OpenStreetMap;
 - **Back into OSM** (real, verifiable, on-the-ground facts: this shop
   exists, that one closed). Tools: the iD editor on openstreetmap.org
   (easiest), JOSM (power), StreetComplete / Every Door (mobile, game-like
-  yes/no quests). Our app does **not** upload to OSM yet — that needs your
+  yes/no quests). Our app does **not** upload to OSM yet - that needs your
   OSM account plus the changeset API plus human review before every upload
   (nobody wants bots vandalizing the map). Tracked in `gaps.md`.
-- **uMap ([umap.openstreetmap.fr](https://umap.openstreetmap.fr))** — your
+- **uMap ([umap.openstreetmap.fr](https://umap.openstreetmap.fr))** - your
   personal map on OSM basemaps: shortlists, notes, colors, shareable links.
   Takes GeoJSON, which is exactly our Export output. Works today.
-- **Open-data portals / your own site** — GeoJSON on GitHub, a city portal,
+- **Open-data portals / your own site** - GeoJSON on GitHub, a city portal,
   a blog embed. Same export path.
 
 ## Walk, photograph, describe (crossconnect sketch)
@@ -61,6 +61,6 @@ A useful crossconnect with us: walk mode records GPS track + timestamped
 photos + notes -> lands here as a point layer with photo attachments ->
 export splits two ways (sights to Commons, verified POIs toward OSM after
 your review). Missing on our side today: features carry name/coords/geometry
-only — no photo attachments, no field-capture flow. That lands before any
+only - no photo attachments, no field-capture flow. That lands before any
 OSM-upload feature, since verified local data is what makes uploads
 trustworthy.

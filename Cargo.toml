@@ -3,7 +3,7 @@ members = [
     "crates/qgiscraft-core",
     "crates/qgiscraft-store",
     "crates/qgiscraft-mcp",
-    "crates/qgiscraft-app",
+    "crates/qgiscraft",
     "crates/qgiscraft-web",
     "xtask",
 ]

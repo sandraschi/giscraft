@@ -16,17 +16,17 @@ Install these if you don't have them already:
 | QGIS LTR (optional) | Side-by-side oracle + cross-checks | `winget install -e --id OSGeo.QGIS_LTR` |
 
 > Windows: all installs via [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/).
-> Without the MSVC linker, `cargo build` fails with `link.exe not found` —
+> Without the MSVC linker, `cargo build` fails with `link.exe not found` -
 > see [Troubleshooting](docs/TROUBLESHOOTING.md).
 
-## Option A — Native app + CLI (recommended today)
+## Option A - Native app + CLI (recommended today)
 
 ```powershell
 git clone https://github.com/sandraschi/qgiscraft
 cd qgiscraft
 $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
-cargo build -p qgiscraft-app -p qgiscraft-mcp
-.\target\debug\qgiscraft-app.exe
+cargo build -p qgiscraft -p qgiscraft-mcp
+.\target\debug\qgiscraft.exe
 ```
 
 The app opens (or creates) `qgiscraft.db` in the working directory.
@@ -39,7 +39,7 @@ cargo run -q -p qgiscraft-mcp -- overpass-query --key amenity --value pharmacy -
 
 (Note: the public Overpass API rate-limits; on HTTP 502 wait a minute and retry.)
 
-## Option B — Claude Desktop (MCP tools only)
+## Option B - Claude Desktop (MCP tools only)
 
 Build once (Option A), then register the server in
 `%APPDATA%\Claude\claude_desktop_config.json`:

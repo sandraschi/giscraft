@@ -1,0 +1,7 @@
+# LF everywhere (fleet rule); .bat needs CRLF for cmd.exe
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.ico binary
+*.db binary
+*.zip binary

@@ -8,7 +8,7 @@ small, tested, reviewed contributions beat grand redesigns every time.
 1. **Small and focused.** Max 10 files per commit. One concern per pull
    request. If your change touches more, split it first and say so.
 2. **Prove it works.** Paste test output (or a `run.json` excerpt) in the
-   PR. A gate that reports success having examined nothing is a failure —
+   PR. A gate that reports success having examined nothing is a failure -
    show what was actually exercised: commands run, fixtures used, measured
    results (ms, bytes, rows).
 3. **Docs travel with code.** Behavior change without a README / HELP /
@@ -34,11 +34,11 @@ small, tested, reviewed contributions beat grand redesigns every time.
 - **Features:** use the feature template. Problem first, proposal second,
   non-goals mandatory. "Add X" without a problem statement will be sent
   back with questions.
-- **Questions:** discussions, not issues — unless it ends in a docs fix,
+- **Questions:** discussions, not issues - unless it ends in a docs fix,
   in which case file it as one.
 - **Security:** do NOT file publicly. Contact the maintainer privately
   (see README for the current channel).
-- No `+1` comments — use reactions. Maintainers close stale issues after
+- No `+1` comments - use reactions. Maintainers close stale issues after
   a warning; reopen with new evidence, not complaints.
 
 ## Pull-request rules

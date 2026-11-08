@@ -16,7 +16,7 @@ L1 `qgiscraft-core`: geo types, `Command::dispatch` (9 ids), Photon/Overpass
 clients (opt-in live), slippy tile math + cached fetch, ear-clip triangulation.
 L2 `qgiscraft-mcp`: CLI-first binary + MCP server (MCP 2024-11-05, hand-rolled
 line-delimited JSON-RPC, stdout pure). Owns SQLite persistence.
-L3 `qgiscraft-app`: egui shell, owns the DB file, Web Mercator canvas, XYZ
+L3 `qgiscraft`: egui shell, owns the DB file, Web Mercator canvas, XYZ
 tiles (2 fetches/frame, disk cache), `--smoke` headless BMP preview.
 Store `qgiscraft-store`: rusqlite/bundled, layers + features(+geom_json).
 

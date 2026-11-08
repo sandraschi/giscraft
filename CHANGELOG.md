@@ -1,15 +1,20 @@
 # Changelog - qgiscraft
 
+## Unreleased - app binary renamed qgiscraft-app -> qgiscraft, repo hygiene
+- Native app crate + binary are now `qgiscraft` (dir `crates/qgiscraft`): `cargo run -p qgiscraft`, `qgiscraft.exe`. justfile (run-app, run-app-smoke, dist), start.ps1, and live docs updated; dated assessments keep the old name as history.
+- `.gitattributes` enforces LF (`*.bat` CRLF); whole tree normalized from CRLF. Em dashes replaced with hyphens repo-wide. AGENTS.md gains section 6 (LF, single trunk, no em dash).
+- Fixed pre-existing gate breakage from the i18n commit: clippy single_element_loop on the Edit menu + fmt drift. Gates: fmt, clippy -D warnings, 133 tests, app --smoke all green.
+
 ## Unreleased - plugins round 2: geodesic + layer.color + doppler.locate (18 tools)
 - New `processing.geodesic` tool + CLI: true-distance circle/ellipse/line (geodesic vertices via `destination_point`, densified XY-to-line), persists via `ingest_hits`. Completes the Now plugin backlog (QuickWKT, coords, grid, NNJoin, geodesic all shipped).
 - New `layer.color` tool + CLI + app styling picker: per-layer `#rrggbb` persisted in a new `layers.color` column (migration included, empty = palette default), honored by canvas, headless BMP, web preview, and `/api/layers`. Styling panel: picker for the selected layer + reset-to-palette; `layer.color` also works over MCP connect (control arm refreshes the live app).
-- New `doppler.locate` MVP (colsto method): offline curve-vs-track matcher — sound-travel iteration, terrain-corrected range, normalized shape correlation, grid rank to top-N scored points. Caveats documented: no 920s gap negative-evidence filter yet, single-capture JSON in, emission clamped to track ends.
-- Gates: core 80 + mcp 28 green (geodesic/doppler hostile tests, dispatch + persist + stdio probes for grid/geodesic/doppler); full workspace link still blocked by the running app exe — close/reopen to pick up the new build.
+- New `doppler.locate` MVP (colsto method): offline curve-vs-track matcher - sound-travel iteration, terrain-corrected range, normalized shape correlation, grid rank to top-N scored points. Caveats documented: no 920s gap negative-evidence filter yet, single-capture JSON in, emission clamped to track ends.
+- Gates: core 80 + mcp 28 green (geodesic/doppler hostile tests, dispatch + persist + stdio probes for grid/geodesic/doppler); full workspace link still blocked by the running app exe - close/reopen to pick up the new build.
 
 ## Unreleased - processing.grid + processing.nearest (grid hexagons, NNJoin hub lines)
 - New `processing.grid` tool + CLI (15 tools total): rect/hex grids over a bbox (10k cell cap, geodesic hex vertices via `destination_point`, auto-closed rings), persists polygons; dry-run is the compute (no live needed). New `processing.nearest` tool + CLI: hub LineStrings from each source feature to its closest target (haversine, 1M pair cap, "A -> B (312 m)" names), persists lines. Backed by pure `processing::grid_features` / `nearest_join` + dispatch validation; L2/app own persistence.
 - Toolbox: "Create grid" (prefills canvas bbox, hex checkbox) + "Nearest neighbor join" (source prefilled from selection) dialogs; both persist + auto-fit + log like the other algorithms.
-- Gates: core 70 + mcp 22 green, fmt clean, xtask parity 13 + forge green, MCP stdio probe (wkt.show earlier; grid/nearest via CLI live runs). Full workspace link blocked again by the running app exe — close/reopen to pick up the new build.
+- Gates: core 70 + mcp 22 green, fmt clean, xtask parity 13 + forge green, MCP stdio probe (wkt.show earlier; grid/nearest via CLI live runs). Full workspace link blocked again by the running app exe - close/reopen to pick up the new build.
 
 ## Unreleased - plugins go real: wkt.show + zoom-to-coords (QuickWKT/LatLon Tools)
 - New `wkt.show` tool + `wkt-show` CLI (13 tools total): hand-rolled 2D WKT reader (POINT/LINESTRING/POLYGON + MULTI, SRID prefix tolerated, auto-closed rings, EMPTY -> zero features), persists via `ingest_hits` with shared geom-type sniff. Plugins menu: real "Show WKT..." + "Zoom to coordinates..." dialogs (lat,lng + N/S/E/W suffixes via `geo::parse_latlng`).
@@ -53,7 +58,7 @@
 - Gates green: 81 tests, clippy -D warnings, fmt, xtask ci.
 - `qgiscraft-web` Axum sidecar on 11254 (Track B seed): GET /api/health|layers|features|geocode|overpass|preview.png, CORS open, serves `web/dist` when built.
 - Map console (`web/`, Vite+React+Leaflet, dev on 11253 proxied): Leaflet map + live layers sidebar, geocode demo/live, one-click Overpass ingest + fit, server-rendered preview link.
-- No new capability: same dispatch + store calls as MCP (duplicated thin glue; unify behind one service layer later — noted in gaps).
+- No new capability: same dispatch + store calls as MCP (duplicated thin glue; unify behind one service layer later - noted in gaps).
 - Gates green: 75 tests + `cargo build` web crate + `vite build` clean (console serves at `/`, API verified live: layers, geocode, 585KB tiled preview.png).
 - Fixed two real bugs found by looking: async-context panic (blocking reqwest inside handler now runs on `spawn_blocking`) and preview fit in degrees instead of world01 (continent view -> street view).
 

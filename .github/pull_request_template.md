@@ -1,4 +1,4 @@
-<!-- One concern per PR, ≤10 files. Fill the checklist honestly — an unchecked
+<!-- One concern per PR, ≤10 files. Fill the checklist honestly - an unchecked
 box with a reason beats a checked box that lies. -->
 
 ## What + why

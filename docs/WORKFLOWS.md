@@ -8,17 +8,17 @@ repair shops marked."*
 
 OSM tagging is a folksonomy, not a schema. Check before you query:
 
-- Bike *shops* (sales, most do repairs): `shop=bicycle` — 29 hits in our
+- Bike *shops* (sales, most do repairs): `shop=bicycle` - 29 hits in our
   test bbox. This is the one to use.
-- Pure repair workshops: `craft=bicycle_repair` — 0 hits here (mappers tag
+- Pure repair workshops: `craft=bicycle_repair` - 0 hits here (mappers tag
   them as `shop=bicycle` + `service:bicycle:repair=yes` instead).
-- Pharmacies (our other demo set): `amenity=pharmacy` — 29 hits, same bbox.
+- Pharmacies (our other demo set): `amenity=pharmacy` - 29 hits, same bbox.
 
 Rule: query the tag mappers actually use, not the one that sounds right.
-Verify with a dry-run count first (see below) — a zero result usually means
+Verify with a dry-run count first (see below) - a zero result usually means
 a wrong tag, not an empty map.
 
-## Path A — another app via MCP (agentic)
+## Path A - another app via MCP (agentic)
 
 The calling agent needs the MCP server (`qgiscraft-mcp mcp` on stdio):
 
@@ -27,7 +27,7 @@ The calling agent needs the MCP server (`qgiscraft-mcp mcp` on stdio):
    west: 16.355, north: 48.225, east: 16.395, live: true}`.
    Check `count`. Zero? Rethink the tag (see above).
 2. Ingest: same call + `"ingest": true`. Response gives `{layer,
-   ingested}` — here `shop-bicycle`, 29 features.
+   ingested}` - here `shop-bicycle`, 29 features.
 3. Read back: `features.list` with `{"layer_id": "shop-bicycle"}`.
 4. Render: `map.render` (control channel) or the web sidecar's
    `/api/preview.png?width=640&height=480` for a PNG to embed.
@@ -35,7 +35,7 @@ The calling agent needs the MCP server (`qgiscraft-mcp mcp` on stdio):
 The caller's contract is JSON in / JSON out; the project DB
 (`QGISCRAFT_DB`, default `./qgiscraft.db`) is the shared ground.
 
-## Path B — by hand in the native app
+## Path B - by hand in the native app
 
 1. Processing > Download OSM features: key `shop`, value `bicycle`,
    check "Restrict to map canvas extent" (or leave off and the same
@@ -44,7 +44,7 @@ The caller's contract is JSON in / JSON out; the project DB
    dock; click a shop for its name.
 3. Vector > Export layer as GeoJSON to hand the set to anyone else.
 
-## Path C — over plain HTTP (Track B sidecar)
+## Path C - over plain HTTP (Track B sidecar)
 
 ```powershell
 # 1. Query (dry run):

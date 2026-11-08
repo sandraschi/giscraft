@@ -15,7 +15,7 @@ For the native app, set them before launch:
 
 ```powershell
 $env:QGISCRAFT_DB = "D:\maps\wien.db"
-.\target\debug\qgiscraft-app.exe
+.\target\debug\qgiscraft.exe
 ```
 
 For Claude Desktop, put them in the `env` block of the server entry
