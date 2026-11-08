@@ -131,3 +131,60 @@ mod tests {
         assert!(demo_search("Wien", 51).is_err());
     }
 }
+
+/// Offline city table for "go to place" in front ends: (names, lat, lng). The first
+/// name is the display name, the rest are aliases. Small on purpose: anything not
+/// listed goes to the live geocoder, never to a guess.
+const CITIES: &[(&[&str], f64, f64)] = &[
+    (&["Wien", "vienna"], 48.2082, 16.3738),
+    (&["Graz"], 47.0707, 15.4395),
+    (&["Salzburg"], 47.8095, 13.0550),
+    (&["Innsbruck"], 47.2692, 11.4041),
+    (&["Linz"], 48.3069, 14.2858),
+    (&["Klagenfurt"], 46.6247, 14.3050),
+    (&["Tokyo", "tokio"], 35.6762, 139.6503),
+    (&["Kyoto"], 35.0116, 135.7681),
+    (&["Osaka"], 34.6937, 135.5023),
+    (&["Nara"], 34.6851, 135.8049),
+    (&["Berlin"], 52.5200, 13.4050),
+    (&["London"], 51.5074, -0.1278),
+    (&["Paris"], 48.8566, 2.3522),
+    (&["Rome", "roma"], 41.9028, 12.4964),
+    (&["New York", "nyc"], 40.7128, -74.0060),
+];
+
+/// Look a city up in the offline table. Case-insensitive, exact name or alias.
+/// Returns (display name, lat, lng); `None` means "not in the table", not "does not exist".
+pub fn city_lookup(name: &str) -> Option<(&'static str, f64, f64)> {
+    let q = name.trim().to_lowercase();
+    if q.is_empty() {
+        return None;
+    }
+    CITIES
+        .iter()
+        .find(|(names, _, _)| names.iter().any(|n| n.to_lowercase() == q))
+        .map(|(names, lat, lng)| (names[0], *lat, *lng))
+}
+
+#[cfg(test)]
+mod city_tests {
+    use super::city_lookup;
+
+    #[test]
+    fn known_cities_and_aliases_resolve() {
+        let found = city_lookup("Tokyo");
+        assert!(found.is_some(), "tokyo missing from the city table");
+        let (n, lat, lng) = found.unwrap_or(("", 0.0, 0.0));
+        assert_eq!(n, "Tokyo");
+        assert!((lat - 35.68).abs() < 0.1 && (lng - 139.65).abs() < 0.1);
+        assert_eq!(city_lookup("  TOKIO ").map(|c| c.0), Some("Tokyo"));
+        assert_eq!(city_lookup("vienna").map(|c| c.0), Some("Wien"));
+    }
+
+    #[test]
+    fn unknown_and_empty_are_none_not_a_guess() {
+        assert!(city_lookup("Atlantis").is_none());
+        assert!(city_lookup("   ").is_none());
+        assert!(city_lookup("48.2, 16.3").is_none());
+    }
+}

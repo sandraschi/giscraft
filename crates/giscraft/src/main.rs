@@ -155,6 +155,8 @@ struct GisCraftApp {
     dialog: Dialog,
     toolbox_query: String,
     pending: Option<std::sync::mpsc::Receiver<Result<IngestBatch, String>>>,
+    /// Go-to-place geocode in flight: (lat, lng, display name) or an error text.
+    jump_rx: Option<std::sync::mpsc::Receiver<JumpResult>>,
     tile_template: String,
     textures: HashMap<String, egui::TextureHandle>,
     control_rx: Option<std::sync::mpsc::Receiver<control::ControlRequest>>,
@@ -209,6 +211,9 @@ fn high_contrast_dark() -> egui::Visuals {
     visuals
 }
 
+/// Go-to-place lookup outcome: (lat, lng, display name) or an error text.
+type JumpResult = Result<(f64, f64, String), String>;
+
 impl GisCraftApp {
     fn open_with_seed(
         control_rx: Option<std::sync::mpsc::Receiver<control::ControlRequest>>,
@@ -234,6 +239,7 @@ impl GisCraftApp {
             dialog: Dialog::None,
             toolbox_query: String::new(),
             pending: None,
+            jump_rx: None,
             tile_template: tiles::tile_url_template(),
             textures: HashMap::new(),
             control_rx,
@@ -568,20 +574,63 @@ impl GisCraftApp {
         }
     }
 
-    /// Plugins > Zoom to coordinates: center the canvas on parsed lat,lng.
-    fn zoom_to_coords(&mut self, text: &str) {
-        match geo::parse_latlng(text) {
-            Ok(p) => {
-                self.center_lng = p.lng;
-                self.center_lat = p.lat;
-                self.zoom = 15.0;
-                self.status = "zoom".to_string();
-                self.push_log(format!("zoom to {}, {}", p.lat, p.lng));
-            }
-            Err(e) => self.push_log(format!("coords failed: {e}")),
+    /// Go to place: "lat, lng", a known city (offline), or any place name (live geocoder).
+    /// Every outcome is logged; a failure never moves the map.
+    fn go_to(&mut self, text: &str) {
+        let text = text.trim();
+        if text.is_empty() {
+            self.push_log("go to: enter a place name or lat, lng".to_string());
+            return;
         }
+        if let Ok(p) = geo::parse_latlng(text) {
+            self.jump_view(p.lat, p.lng, 15.0, &format!("{}, {}", p.lat, p.lng));
+            return;
+        }
+        if let Some((name, lat, lng)) = giscraft_core::geocode::city_lookup(text) {
+            self.jump_view(lat, lng, 11.0, name);
+            return;
+        }
+        let query = text.to_string();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.jump_rx = Some(rx);
+        self.push_log(format!("go to '{query}': looking up ..."));
+        std::thread::spawn(move || {
+            let out: JumpResult = (|| {
+                let rt = tokio::runtime::Runtime::new().map_err(|e| format!("runtime: {e}"))?;
+                let hits = rt
+                    .block_on(giscraft_core::geocode::photon_search(&query, 1))
+                    .map_err(|e| e.to_string())?;
+                hits.into_iter()
+                    .next()
+                    .map(|h| (h.lat, h.lng, h.name))
+                    .ok_or_else(|| format!("no place found for '{query}'"))
+            })();
+            let _ = tx.send(out);
+        });
     }
 
+    fn jump_view(&mut self, lat: f64, lng: f64, zoom: f32, label: &str) {
+        self.center_lat = lat;
+        self.center_lng = lng;
+        self.zoom = zoom;
+        self.status = "zoom".to_string();
+        self.push_log(format!("go to {label} ({lat:.4}, {lng:.4})"));
+    }
+
+    /// Land a finished go-to lookup (or report why it failed).
+    fn poll_jump(&mut self) {
+        let done = self.jump_rx.as_ref().and_then(|rx| rx.try_recv().ok());
+        if let Some(result) = done {
+            self.jump_rx = None;
+            match result {
+                Ok((lat, lng, name)) => self.jump_view(lat, lng, 12.0, &name),
+                Err(e) => {
+                    self.status = "go to failed".to_string();
+                    self.push_log(format!("go to failed: {e}"));
+                }
+            }
+        }
+    }
     /// Plugins > Show WKT: parse and persist as a layer, then fit it.
     fn submit_wkt(&mut self, text: &str, layer_id: &str) {
         if layer_id.is_empty() || layer_id.chars().count() > 64 {
@@ -1658,9 +1707,22 @@ impl GisCraftApp {
             Dialog::ZoomTo { text } => {
                 let mut submit = false;
                 let mut cancel = false;
-                egui::Window::new("Zoom to coordinates").show(ui.ctx(), |ui| {
-                    ui.label("lat, lng - e.g. 48.2082, 16.3738 (N/S/E/W suffixes ok):");
-                    ui.text_edit_singleline(text);
+                let mut pick: Option<String> = None;
+                egui::Window::new("Go to place").show(ui.ctx(), |ui| {
+                    ui.label("Place name or lat, lng (e.g. Tokyo, or 35.68, 139.77):");
+                    let resp = ui.text_edit_singleline(text);
+                    if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        submit = true;
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        for c in [
+                            "Wien", "Graz", "Tokyo", "Kyoto", "Osaka", "Berlin", "London", "Paris",
+                        ] {
+                            if ui.small_button(c).clicked() {
+                                pick = Some(c.to_string());
+                            }
+                        }
+                    });
                     ui.horizontal(|ui| {
                         if ui.button("Go").clicked() {
                             submit = true;
@@ -1670,9 +1732,12 @@ impl GisCraftApp {
                         }
                     });
                 });
-                if submit {
+                if let Some(c) = pick {
+                    self.go_to(&c);
+                    keep = false;
+                } else if submit {
                     let body = text.clone();
-                    self.zoom_to_coords(&body);
+                    self.go_to(&body);
                     keep = false;
                 } else if cancel {
                     keep = false;
@@ -2226,6 +2291,12 @@ impl eframe::App for GisCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.poll_control();
         self.poll_pending();
+        self.poll_jump();
+        if ui.input(|input| input.modifiers.ctrl && input.key_pressed(egui::Key::G)) {
+            self.dialog = Dialog::ZoomTo {
+                text: String::new(),
+            };
+        }
         // Shortcuts: F5 refresh, Delete removes selection, Ctrl+Plus/Minus/0 zoom.
         if ui.input(|input| input.key_pressed(egui::Key::F5)) {
             self.refresh();
@@ -2325,6 +2396,12 @@ impl eframe::App for GisCraftApp {
                     if ui.button(t(I18nKey::ViewZoomOut, loc)).clicked() {
                         self.zoom = (self.zoom - 1.0).clamp(2.0, 19.0);
                         self.status = "zoom".to_string();
+                    }
+                    if ui.button("Go to place... (Ctrl+G)").clicked() {
+                        self.dialog = Dialog::ZoomTo {
+                            text: String::new(),
+                        };
+                        ui.close();
                     }
                     if ui.button(t(I18nKey::ViewFitData, loc)).clicked() {
                         self.fit_only = None;
@@ -2438,7 +2515,7 @@ impl eframe::App for GisCraftApp {
                             layer_id: "wkt".to_string(),
                         };
                     }
-                    if ui.button("Zoom to coordinates...").clicked() {
+                    if ui.button("Go to place...").clicked() {
                         self.dialog = Dialog::ZoomTo {
                             text: String::new(),
                         };
@@ -3762,6 +3839,7 @@ mod tests {
             dialog: Dialog::None,
             toolbox_query: String::new(),
             pending: None,
+            jump_rx: None,
             tile_template: String::new(),
             textures: HashMap::new(),
             control_rx: None,
