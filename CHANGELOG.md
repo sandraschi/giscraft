@@ -1,6 +1,8 @@
 # Changelog - giscraft
 
 ## Unreleased
+- Honesty fixes: success or a clear error, never invented data. Core dispatch (stateless) now returns a typed `unsupported` error for `project.status`, `layer.list`, `layer.add`, `layer.remove` instead of fake `wien-demo` / `added:true` / empty results. `project.status` in giscraft-mcp and the CLI reports the real project DB (path, layers, visible layers, features, CRS values in use; `--db` / `db`).
+- MCP tool results that report an error now set `isError: true`; the CLI exits 1 when it prints an error. `layer.list` no longer hides a DB error as zero features. `layer.import` returns a summary (layer, parsed, ingest incl. `skipped`) instead of echoing every row; non-array hits are refused instead of creating an empty layer.
 
 ## 0.2.0 (2026-11-08, alpha)
 Everything below, down to 0.1.0, ships in this release. The entry headings below still say Unreleased. Breaking: crates, binaries and env vars were renamed from qgiscraft to giscraft (see the rename entry).

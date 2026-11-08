@@ -152,6 +152,17 @@ fn encode(op: &str, result: Result<Value, GisError>) -> Value {
     }
 }
 
+/// Core dispatch is stateless: it has no project to report on or change. Ops that need
+/// the project store live in the store-backed front ends (giscraft-mcp, the app).
+/// Answering here with invented data would be a lie, so say so with a typed error.
+fn needs_store(op: &str) -> Value {
+    encode(
+        op,
+        Err(GisError::Unsupported(format!(
+            "{op} needs the project store; core dispatch is stateless. Use giscraft-mcp (SQLite project DB) or the live app"
+        ))),
+    )
+}
 /// Dispatch one command headlessly. Never panics; failures become JSON values.
 pub async fn dispatch(cmd: Command) -> Value {
     match cmd {
@@ -167,12 +178,7 @@ pub async fn dispatch(cmd: Command) -> Value {
             ],
             "agent_contract": "CLI-first: every command supports --json; `mcp` subcommand mirrors the same dispatch over stdio",
         }),
-        Command::ProjectStatus => json!({
-            "project": "wien-demo",
-            "crs": "EPSG:4326",
-            "layers": 0,
-            "note": "Phase 0 scaffold: in-memory only, SQLite store lands via giscraft-store",
-        }),
+        Command::ProjectStatus => needs_store("project.status"),
         Command::LayerAdd {
             id,
             name,
@@ -180,32 +186,23 @@ pub async fn dispatch(cmd: Command) -> Value {
             geom_type,
             crs,
         } => {
+            // Validate like the real thing, so bad input is still reported as bad input.
             let mut p = project::Project::new("scratch".to_string());
             let layer = project::Layer {
-                id: id.clone(),
-                name: name.clone(),
+                id,
+                name,
                 source,
                 geom_type,
                 crs: crs.unwrap_or_else(|| "EPSG:4326".to_string()),
                 visible: true,
             };
-            encode(
-                "layer.add",
-                p.add_layer(layer)
-                    .map(|()| json!({"id": id, "name": name, "added": true})),
-            )
+            match p.add_layer(layer) {
+                Ok(()) => needs_store("layer.add"),
+                Err(e) => encode("layer.add", Err(e)),
+            }
         }
-        Command::LayerList => {
-            json!({"layers": [], "note": "Phase 0: SQLite listing via store crate"})
-        }
-        Command::LayerRemove { id } => {
-            let mut p = project::Project::new("scratch".to_string());
-            encode(
-                "layer.remove",
-                p.remove_layer(&id)
-                    .map(|removed| json!({"id": id, "removed": removed})),
-            )
-        }
+        Command::LayerList => needs_store("layer.list"),
+        Command::LayerRemove { .. } => needs_store("layer.remove"),
         Command::GeocodeSearch { query, limit, live } => {
             if query.trim().is_empty() {
                 return json!({"error": "invalid input: query must not be empty", "op": "geocode.search"});
@@ -851,6 +848,38 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn store_backed_ops_in_stateless_core_are_errors_not_fake_data() {
+        let cases = [
+            (Command::ProjectStatus, "project.status"),
+            (Command::LayerList, "layer.list"),
+            (
+                Command::LayerRemove {
+                    id: "x".to_string(),
+                },
+                "layer.remove",
+            ),
+            (
+                Command::LayerAdd {
+                    id: "x".to_string(),
+                    name: "X".to_string(),
+                    source: "osm".to_string(),
+                    geom_type: "point".to_string(),
+                    crs: None,
+                },
+                "layer.add",
+            ),
+        ];
+        for (cmd, op) in cases {
+            let v = dispatch(cmd).await;
+            let err = v.get("error").and_then(|e| e.as_str()).unwrap_or("");
+            assert!(err.contains("unsupported"), "{op}: {v}");
+            assert_eq!(v.get("op").and_then(|o| o.as_str()), Some(op));
+            for fake in ["project", "layers", "added", "removed"] {
+                assert!(v.get(fake).is_none(), "{op} invented {fake}: {v}");
+            }
+        }
+    }
     #[tokio::test]
     async fn hostile_empty_layer_id_becomes_error_value_not_panic() {
         let v = dispatch(Command::LayerAdd {

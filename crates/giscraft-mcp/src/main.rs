@@ -33,8 +33,10 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Project status (CRS, layer count)
+    /// Project DB status: path, layer and feature counts, CRS values in use
     ProjectStatus {
+        #[arg(long)]
+        db: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -346,7 +348,10 @@ fn layer_list(db: Option<&str>) -> Value {
         Ok(layers) => layers,
         Err(e) => return json!({"error": e.to_string(), "op": "layer.list"}),
     };
-    let counts = store::feature_counts(&conn).unwrap_or_default();
+    let counts = match store::feature_counts(&conn) {
+        Ok(counts) => counts,
+        Err(e) => return json!({"error": e.to_string(), "op": "layer.list"}),
+    };
     let rows: Vec<Value> = layers
         .into_iter()
         .map(|l| {
@@ -361,6 +366,55 @@ fn layer_list(db: Option<&str>) -> Value {
     json!({"count": rows.len(), "layers": rows})
 }
 
+/// Real project DB status. Reports only what the store holds; there is no project-wide
+/// CRS concept in the store, so the CRS values layers actually use are listed instead.
+fn project_status(db: Option<&str>) -> Value {
+    let op = "project.status";
+    let conn = match store::open_at(db) {
+        Ok(conn) => conn,
+        Err(e) => return json!({"error": e.to_string(), "op": op}),
+    };
+    let layers = match store::list_layers(&conn) {
+        Ok(layers) => layers,
+        Err(e) => return json!({"error": e.to_string(), "op": op}),
+    };
+    let counts = match store::feature_counts(&conn) {
+        Ok(counts) => counts,
+        Err(e) => return json!({"error": e.to_string(), "op": op}),
+    };
+    let mut crs: Vec<String> = layers.iter().map(|l| l.crs.clone()).collect();
+    crs.sort();
+    crs.dedup();
+    json!({
+        "db": store::resolve_db_path(db).display().to_string(),
+        "layers": layers.len(),
+        "visible_layers": layers.iter().filter(|l| l.visible).count(),
+        "features": counts.iter().map(|(_, n)| *n).sum::<u64>(),
+        "layer_crs": crs,
+    })
+}
+
+/// True when a tool payload reports a failure: an "error" at the top level, or in a
+/// direct child object (e.g. `{"layer": .., "ingest": {"error": ..}}`). Arrays are data,
+/// not status, so an "error" key inside a list item does not count.
+fn reports_error(v: &Value) -> bool {
+    let set = |o: &serde_json::Map<String, Value>| o.get("error").is_some_and(|e| !e.is_null());
+    match v.as_object() {
+        Some(obj) => set(obj) || obj.values().any(|c| c.as_object().is_some_and(set)),
+        None => false,
+    }
+}
+
+/// Import summary for agents: counts, never the rows themselves (a 200k-row file must
+/// not flood the caller).
+fn import_summary(out: &Value, ingest: Value) -> Value {
+    json!({
+        "layer": out.get("layer"),
+        "name": out.get("name"),
+        "parsed": out.get("count"),
+        "ingest": ingest,
+    })
+}
 fn layer_remove(db: Option<&str>, id: &str) -> Value {
     if id.trim().is_empty() {
         return json!({"error": "invalid input: id must not be empty", "op": "layer.remove"});
@@ -437,9 +491,12 @@ fn ingest_hits(
         Ok(conn) => conn,
         Err(e) => return serde_json::json!({"error": e.to_string(), "op": op}),
     };
-    let arr = hits.as_array();
+    let Some(items) = hits.as_array() else {
+        return serde_json::json!({"error": "invalid input: hits must be an array", "op": op});
+    };
     let mut feats = Vec::new();
-    if let Some(items) = arr {
+    let mut skipped = 0usize;
+    {
         for h in items {
             let name = h
                 .get("name")
@@ -456,7 +513,10 @@ fn ingest_hits(
                 h.get("lat").and_then(|v| v.as_f64()),
             ) {
                 (Some(lng), Some(lat)) => (lng, lat),
-                _ => continue,
+                _ => {
+                    skipped += 1;
+                    continue;
+                }
             };
             feats.push(store::StoredFeature {
                 layer_id: layer_id.to_string(),
@@ -482,7 +542,7 @@ fn ingest_hits(
         return serde_json::json!({"error": e.to_string(), "op": op});
     }
     match store::replace_features(&conn, layer_id, &feats) {
-        Ok(n) => serde_json::json!({"layer": layer_id, "ingested": n}),
+        Ok(n) => serde_json::json!({"layer": layer_id, "ingested": n, "skipped": skipped}),
         Err(e) => serde_json::json!({"error": e.to_string(), "op": op}),
     }
 }
@@ -591,6 +651,11 @@ fn show(value: Value, as_json: bool, header: &str) {
         println!("{header}");
         print_json(&value);
     }
+    if reports_error(&value) {
+        use std::io::Write as _;
+        let _ = std::io::stdout().flush();
+        std::process::exit(1);
+    }
 }
 
 /// Pure, testable tool catalog. Mirrors `tools/list` without I/O.
@@ -598,7 +663,7 @@ fn tools_list() -> Value {
     json!({
         "tools": [
             {"name": "status", "description": "Show app status (mode, commands, contract)", "inputSchema": {"type": "object", "properties": {}}},
-            {"name": "project.status", "description": "Project CRS and layer count", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "project.status", "description": "Project DB status: db path, layer count, visible layers, feature count, CRS values in use (SQLite project DB; db optional)", "inputSchema": {"type": "object", "properties": {"db": {"type": "string"}}}},
             {"name": "layer.add", "description": "Add a layer: id, name required; source, geom_type, crs, visible, db optional", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "source": {"type": "string"}, "geom_type": {"type": "string"}, "crs": {"type": "string"}, "visible": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["id", "name"]}},
             {"name": "layer.list", "description": "List layers in draw order (SQLite project DB; db optional)", "inputSchema": {"type": "object", "properties": {"db": {"type": "string"}}}},
             {"name": "layer.remove", "description": "Remove a layer by id (db optional)", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "db": {"type": "string"}}, "required": ["id"]}},
@@ -625,7 +690,22 @@ fn str_arg(args: &Value, key: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Run a tool and mark failures with MCP `isError`, so a client never sees an error
+/// payload dressed up as a success. The payload itself is unchanged.
 fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
+    let mut resp = call_tool_inner(name, args, connect);
+    let failed = resp
+        .pointer("/content/0/text")
+        .and_then(Value::as_str)
+        .and_then(|t| serde_json::from_str::<Value>(t).ok())
+        .is_some_and(|payload| reports_error(&payload));
+    if failed {
+        resp["isError"] = Value::Bool(true);
+    }
+    resp
+}
+
+fn call_tool_inner(name: &str, args: &Value, connect: Option<u16>) -> Value {
     // Connected mode: the DB-touching tools run in the LIVE app instead of
     // the local headless path, so there is exactly one writer. Everything
     // else (network tools, feature reads, export) stays local.
@@ -647,7 +727,7 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
     }
     let result = match name {
         "status" => run(Command::Status),
-        "project.status" => run(Command::ProjectStatus),
+        "project.status" => project_status(str_arg(args, "db").as_deref()),
         "layer.add" => {
             let db = str_arg(args, "db");
             layer_add(
@@ -775,7 +855,7 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
                 &hits,
                 "layer.import",
             );
-            json!({"import_result": out, "ingest": stored})
+            import_summary(&out, stored)
         }
         "wkt.show" => {
             let out = run(Command::WktShow {
@@ -1149,7 +1229,9 @@ fn main() {
     let cli = Cli::parse();
     match cli.command {
         Commands::Status { json } => show(run(Command::Status), json, "giscraft-mcp status"),
-        Commands::ProjectStatus { json } => show(run(Command::ProjectStatus), json, "project"),
+        Commands::ProjectStatus { db, json } => {
+            show(project_status(db.as_deref()), json, "project")
+        }
         Commands::LayerAdd {
             id,
             name,
@@ -1294,11 +1376,7 @@ fn main() {
                     &hits,
                     "layer.import",
                 );
-                show(
-                    json!({"import_result": out, "ingest": stored}),
-                    json,
-                    "layer.import",
-                );
+                show(import_summary(&out, stored), json, "layer.import");
             }
         }
         Commands::ProcessingBuffer {
@@ -1986,6 +2064,7 @@ mod tests {
             "overpass.query",
         );
         assert_eq!(stored.get("ingested").and_then(|v| v.as_u64()), Some(1));
+        assert_eq!(stored.get("skipped").and_then(|v| v.as_u64()), Some(1));
         let listed = features_list(Some(db.as_str()), Some("amenity-pharmacy"));
         assert_eq!(listed.get("count").and_then(|v| v.as_u64()), Some(1));
         let _ = std::fs::remove_file(&db);
@@ -2083,6 +2162,120 @@ mod tests {
         assert!(content_text(&result).contains("read failed"));
     }
 
+    #[test]
+    fn project_status_reports_real_db_counts() {
+        let db = temp_db("pstatus");
+        let empty = project_status(Some(db.as_str()));
+        assert!(empty.get("error").is_none(), "got: {empty}");
+        assert_eq!(empty.get("layers").and_then(|v| v.as_u64()), Some(0));
+        let hidden = layer_add(Some(db.as_str()), "b", "B", None, None, None, Some(false));
+        assert!(hidden.get("error").is_none(), "got: {hidden}");
+        let hits = json!([{"name": "P", "kind": "node", "lng": 16.3, "lat": 48.2}]);
+        let stored = ingest_hits(Some(db.as_str()), "a", "A", "test", "point", &hits, "test");
+        assert_eq!(stored.get("ingested").and_then(|v| v.as_u64()), Some(1));
+        let s = project_status(Some(db.as_str()));
+        assert_eq!(
+            s.get("layers").and_then(|v| v.as_u64()),
+            Some(2),
+            "got: {s}"
+        );
+        assert_eq!(s.get("visible_layers").and_then(|v| v.as_u64()), Some(1));
+        assert_eq!(s.get("features").and_then(|v| v.as_u64()), Some(1));
+        assert!(!s.to_string().contains("wien-demo"));
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn project_status_over_mcp_is_real_and_not_flagged() {
+        let db = temp_db("pstatus-mcp");
+        let result = call_tool("project.status", &json!({"db": db}), None);
+        let text = content_text(&result);
+        assert!(text.contains("\"layers\":0"), "got: {text}");
+        assert!(!text.contains("wien-demo") && !text.contains("scaffold"));
+        assert!(result.get("isError").is_none());
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn failures_are_flagged_is_error_and_successes_are_not() {
+        let unknown = call_tool("no.such.tool", &json!({}), None);
+        assert_eq!(unknown.get("isError"), Some(&Value::Bool(true)));
+        let bad = call_tool("layer.add", &json!({"id": "", "name": ""}), None);
+        assert_eq!(bad.get("isError"), Some(&Value::Bool(true)), "got: {bad}");
+        let missing = call_tool(
+            "layer.import",
+            &json!({"path": "definitely-not-here-xyz.geojson"}),
+            None,
+        );
+        assert_eq!(missing.get("isError"), Some(&Value::Bool(true)));
+        let db = temp_db("iserr");
+        let ok = call_tool("layer.list", &json!({"db": db}), None);
+        assert!(ok.get("isError").is_none(), "got: {ok}");
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn reports_error_sees_nested_failures_but_not_data() {
+        assert!(reports_error(&json!({"error": "x"})));
+        assert!(reports_error(
+            &json!({"layer": "a", "ingest": {"error": "disk full"}})
+        ));
+        assert!(!reports_error(&json!({"error": null, "count": 1})));
+        assert!(!reports_error(
+            &json!({"layers": [{"error": "a layer called error"}]})
+        ));
+        assert!(!reports_error(&json!([1, 2])));
+    }
+
+    #[test]
+    fn ingest_refuses_non_array_hits_instead_of_creating_an_empty_layer() {
+        let db = temp_db("nonarray");
+        let out = ingest_hits(
+            Some(db.as_str()),
+            "x",
+            "X",
+            "test",
+            "point",
+            &Value::Null,
+            "test",
+        );
+        assert!(out.get("error").is_some(), "got: {out}");
+        let listed = layer_list(Some(db.as_str()));
+        assert_eq!(
+            listed.get("count").and_then(|v| v.as_u64()),
+            Some(0),
+            "got: {listed}"
+        );
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn layer_import_returns_a_summary_not_the_rows() {
+        let mut src = std::env::temp_dir();
+        src.push(format!(
+            "giscraft-test-summary-{}.geojson",
+            std::process::id()
+        ));
+        let doc = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"A"},"geometry":{"type":"Point","coordinates":[16.3,48.2]}},{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[[16.3,48.2],[16.4,48.25]]}}]}"#;
+        if std::fs::write(&src, doc).is_err() {
+            return;
+        }
+        let db = temp_db("summary");
+        let result = call_tool(
+            "layer.import",
+            &json!({"path": src.to_string_lossy(), "db": db}),
+            None,
+        );
+        let text = content_text(&result);
+        let _ = std::fs::remove_file(&src);
+        assert!(!text.contains("\"hits\""), "rows were echoed: {text}");
+        assert!(!text.contains("coordinates"), "geometry was echoed: {text}");
+        assert!(text.contains("\"parsed\":2"), "got: {text}");
+        assert!(text.contains("\"ingested\":2"), "got: {text}");
+        assert!(text.contains("\"skipped\":0"), "got: {text}");
+        assert!(result.get("isError").is_none());
+        let _ = std::fs::remove_file(&db);
+    }
     #[test]
     fn geocode_out_of_range_limit_rejected() {
         let result = call_tool(
