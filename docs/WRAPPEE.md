@@ -1,7 +1,7 @@
 # QGIS (the wrappee)
 
 [QGIS](https://qgis.org) is the free and open-source desktop geographic
-information system, GPLv2+. It is the reference `qgiscraft-mcp` clones
+information system, GPLv2+. It is the reference `giscraft-mcp` clones
 black-box: menu layout, docks, canvas behavior, shortcuts, Processing
 Toolbox, Print Layout. No QGIS code is used or needed here.
 

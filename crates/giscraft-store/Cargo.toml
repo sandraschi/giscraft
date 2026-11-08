@@ -1,5 +1,5 @@
 [package]
-name = "qgiscraft-store"
+name = "giscraft-store"
 version = "0.1.0"
 edition = "2021"
 description = "SQLite project store (no UI/MCP deps)"

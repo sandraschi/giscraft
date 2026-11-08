@@ -9,8 +9,8 @@
 #>
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$AppCrate = "qgiscraft"
-$AppBin = "qgiscraft"
+$AppCrate = "giscraft"
+$AppBin = "giscraft"
 $releaseExe = Join-Path $RepoRoot "target\release\$AppBin.exe"
 if (Test-Path $releaseExe) {
   & $releaseExe @args

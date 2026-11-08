@@ -3,13 +3,13 @@
 ## `overpass status 502` / `photon unreachable`
 **Cause**: public demo instances rate-limit or flap (observed repeatedly).
 **Fix**: wait a minute and retry. For heavy use, self-host and point
-`QGISCRAFT_OVERPASS_URL` / `QGISCRAFT_PHOTON_URL` at it (see Configuration).
+`GISCRAFT_OVERPASS_URL` / `GISCRAFT_PHOTON_URL` at it (see Configuration).
 
 ## Tiles load slowly or not at all
 **Cause**: 2 network fetches per frame by design (no UI freeze); cold cache
 on first visit to an area.
 **Fix**: pan slowly once (cache is on disk, second visit is instant), or set
-`QGISCRAFT_TILES_URL` to a local mirror. Async tile worker is a gaps item.
+`GISCRAFT_TILES_URL` to a local mirror. Async tile worker is a gaps item.
 
 ## `link.exe not found` on `cargo build`
 **Cause**: MSVC linker missing (Rust on Windows needs it).
@@ -17,8 +17,8 @@ on first visit to an area.
 with C++" workload, then rebuild.
 
 ## App opens empty / layers gone
-**Cause**: it opened a different `qgiscraft.db` (CWD-relative default).
-**Fix**: check the status bar project name, or set `QGISCRAFT_DB` explicitly.
+**Cause**: it opened a different `giscraft.db` (CWD-relative default).
+**Fix**: check the status bar project name, or set `GISCRAFT_DB` explicitly.
 Each DB file is a separate project.
 
 ## `database is locked`

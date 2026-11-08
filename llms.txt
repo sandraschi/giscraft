@@ -1,4 +1,4 @@
-# qgiscraft
+# giscraft
 
 QGIS-class GIS in pure Rust: clean-room 1:1 clone shell for QGIS muscle
 memory, modern core, CLI + MCP first. Native egui app, SQLite project file,
@@ -8,7 +8,7 @@ Web Mercator canvas with tiles, live Overpass/Photon ingest.
 - Install: INSTALL.md (build from source; Rust + MSVC linker required)
 - Onboarding: docs/ONBOARDING.md (smoke test, first live map)
 - Tools (9 MCP tools): docs/TOOLS.md
-- Config (`QGISCRAFT_*` env): docs/CONFIGURATION.md
+- Config (`GISCRAFT_*` env): docs/CONFIGURATION.md
 - Architecture (L1/L2/L3, command bus): docs/ARCHITECTURE.md
 - Data ecosystem (sources, standards, where your maps go): docs/ECOSYSTEM.md
 - QGIS wrappee + plugin strategy: docs/WRAPPEE.md, docs/plugins.md

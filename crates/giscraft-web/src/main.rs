@@ -1,6 +1,6 @@
 //! Thin HTTP sidecar (Track B seed): the same command bus over REST.
 //! No new capabilities here - every handler dispatches into
-//! `qgiscraft-core` / `qgiscraft-store` exactly like the MCP layer does.
+//! `giscraft-core` / `giscraft-store` exactly like the MCP layer does.
 //! Serves the built console from `web/dist` when present (Vite build output);
 //! in dev, run Vite on :11253 with its proxy pointed here (:11254).
 #![deny(clippy::unwrap_used)]
@@ -27,15 +27,15 @@ fn db_path(param: Option<String>) -> Option<String> {
 }
 
 fn open_db(db: &Option<String>) -> Result<rusqlite::Connection, String> {
-    qgiscraft_store::open_at(db.as_deref()).map_err(|e| e.to_string())
+    giscraft_store::open_at(db.as_deref()).map_err(|e| e.to_string())
 }
 
 async fn health() -> impl IntoResponse {
     Json(json!({
         "status": "ok",
-        "app": "qgiscraft-web",
+        "app": "giscraft-web",
         "version": env!("CARGO_PKG_VERSION"),
-        "db": qgiscraft_store::default_db_path().to_string_lossy(),
+        "db": giscraft_store::default_db_path().to_string_lossy(),
     }))
 }
 
@@ -45,7 +45,7 @@ async fn layers(Query(q): Query<HashMap<String, String>>) -> impl IntoResponse {
         Ok(c) => c,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))),
     };
-    let layers = match qgiscraft_store::list_layers(&conn) {
+    let layers = match giscraft_store::list_layers(&conn) {
         Ok(l) => l,
         Err(e) => {
             return (
@@ -54,7 +54,7 @@ async fn layers(Query(q): Query<HashMap<String, String>>) -> impl IntoResponse {
             )
         }
     };
-    let counts = qgiscraft_store::feature_counts(&conn).unwrap_or_default();
+    let counts = giscraft_store::feature_counts(&conn).unwrap_or_default();
     let rows: Vec<Value> = layers
         .into_iter()
         .map(|l| {
@@ -83,7 +83,7 @@ async fn features(Query(q): Query<FeaturesQuery>) -> impl IntoResponse {
         Ok(c) => c,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))),
     };
-    match qgiscraft_store::list_features(&conn, q.layer_id.as_deref()) {
+    match giscraft_store::list_features(&conn, q.layer_id.as_deref()) {
         Ok(rows) => (
             StatusCode::OK,
             Json(json!({"count": rows.len(), "features": rows})),
@@ -110,7 +110,7 @@ async fn geocode(Query(q): Query<GeocodeQuery>) -> impl IntoResponse {
             Json(json!({"error": "invalid input: query required", "op": "geocode.search"})),
         );
     }
-    let v = qgiscraft_core::dispatch(qgiscraft_core::Command::GeocodeSearch {
+    let v = giscraft_core::dispatch(giscraft_core::Command::GeocodeSearch {
         query,
         limit: q.limit,
         live: q.live.unwrap_or(false),
@@ -149,7 +149,7 @@ async fn overpass(Query(q): Query<OverpassQuery>) -> impl IntoResponse {
             ),
         );
     }
-    let out = qgiscraft_core::dispatch(qgiscraft_core::Command::OverpassQuery {
+    let out = giscraft_core::dispatch(giscraft_core::Command::OverpassQuery {
         key: key.clone(),
         value: value.clone(),
         south: q.south,
@@ -180,7 +180,7 @@ async fn overpass(Query(q): Query<OverpassQuery>) -> impl IntoResponse {
 
 /// Shared ingest (mirrors the MCP layer): hits -> layer + features.
 fn ingest_hits(db: Option<&str>, layer_id: &str, layer_name: &str, hits: &Value) -> Value {
-    let conn = match qgiscraft_store::open_at(db) {
+    let conn = match giscraft_store::open_at(db) {
         Ok(c) => c,
         Err(e) => return json!({"error": e.to_string()}),
     };
@@ -199,7 +199,7 @@ fn ingest_hits(db: Option<&str>, layer_id: &str, layer_name: &str, hits: &Value)
         if !(-180.0..=180.0).contains(&lng) || !(-90.0..=90.0).contains(&lat) {
             continue;
         }
-        feats.push(qgiscraft_store::StoredFeature {
+        feats.push(giscraft_store::StoredFeature {
             layer_id: layer_id.to_string(),
             name: h
                 .get("name")
@@ -219,17 +219,17 @@ fn ingest_hits(db: Option<&str>, layer_id: &str, layer_name: &str, hits: &Value)
                 .map(|g| g.to_string()),
         });
     }
-    let layer = qgiscraft_store::StoredLayer::new(
+    let layer = giscraft_store::StoredLayer::new(
         layer_id.to_string(),
         layer_name.to_string(),
         Some("http".to_string()),
         None,
         None,
     );
-    if let Err(e) = qgiscraft_store::add_layer(&conn, &layer) {
+    if let Err(e) = giscraft_store::add_layer(&conn, &layer) {
         return json!({"error": e.to_string()});
     }
-    match qgiscraft_store::replace_features(&conn, layer_id, &feats) {
+    match giscraft_store::replace_features(&conn, layer_id, &feats) {
         Ok(n) => json!({"layer": layer_id, "ingested": n}),
         Err(e) => json!({"error": e.to_string()}),
     }
@@ -261,19 +261,19 @@ async fn preview_png(Query(q): Query<PreviewQuery>) -> axum::response::Response 
         Err(e) => return err(e),
     };
     let template = {
-        let layers = qgiscraft_store::list_layers(&conn).unwrap_or_default();
+        let layers = giscraft_store::list_layers(&conn).unwrap_or_default();
         layers
             .iter()
             .filter(|l| l.visible && l.geom_type == "raster")
             .filter_map(|l| l.source.strip_prefix("xyz:"))
-            .find(|t| qgiscraft_core::tiles::is_usable_template(t))
+            .find(|t| giscraft_core::tiles::is_usable_template(t))
             .map(|t| t.to_string())
-            .unwrap_or_else(qgiscraft_core::tiles::tile_url_template)
+            .unwrap_or_else(giscraft_core::tiles::tile_url_template)
     };
     // Fit visible features from this DB (same math as the canvas).
-    let feats = qgiscraft_store::list_features(&conn, None).unwrap_or_default();
+    let feats = giscraft_store::list_features(&conn, None).unwrap_or_default();
     let colors: std::collections::HashMap<String, (u8, u8, u8)> =
-        qgiscraft_store::list_layers(&conn)
+        giscraft_store::list_layers(&conn)
             .unwrap_or_default()
             .into_iter()
             .filter_map(|l| {
@@ -281,7 +281,7 @@ async fn preview_png(Query(q): Query<PreviewQuery>) -> axum::response::Response 
                 if hex.is_empty() {
                     return None;
                 }
-                qgiscraft_core::tiles::parse_layer_color(&hex)
+                giscraft_core::tiles::parse_layer_color(&hex)
                     .ok()
                     .flatten()
                     .map(|rgb| (l.id, rgb))
@@ -343,14 +343,14 @@ async fn preview_png(Query(q): Query<PreviewQuery>) -> axum::response::Response 
 /// Headless BMP via the same canvas math (duplicate of the app preview;
 /// unified under one render module in a later pass).
 fn render_bmp(
-    feats: &[qgiscraft_store::StoredFeature],
+    feats: &[giscraft_store::StoredFeature],
     width: u32,
     height: u32,
     with_tiles: bool,
     template: &str,
     colors: &std::collections::HashMap<String, (u8, u8, u8)>,
 ) -> Result<Vec<u8>, String> {
-    use qgiscraft_core::tiles;
+    use giscraft_core::tiles;
     if width == 0 || height == 0 || width > 4096 || height > 4096 {
         return Err("preview size must be 1..4096".to_string());
     }
@@ -532,20 +532,20 @@ fn render_bmp(
 
 /// Thin adapters over core math: same signatures as before, one implementation.
 fn unproject(w: f32, h: f32, clng: f64, clat: f64, zoom: f32, x: f32, y: f32) -> (f64, f64) {
-    qgiscraft_core::tiles::unproject(x, y, clng, clat, zoom, w / 2.0, h / 2.0)
+    giscraft_core::tiles::unproject(x, y, clng, clat, zoom, w / 2.0, h / 2.0)
 }
 
 fn project(lng: f64, lat: f64, clng: f64, clat: f64, zoom: f32, w: f32, h: f32) -> (f32, f32) {
-    qgiscraft_core::tiles::project(lng, lat, clng, clat, zoom, w / 2.0, h / 2.0)
+    giscraft_core::tiles::project(lng, lat, clng, clat, zoom, w / 2.0, h / 2.0)
 }
 
 fn layer_color(id: &str) -> (u8, u8, u8) {
-    qgiscraft_core::tiles::layer_color(id)
+    giscraft_core::tiles::layer_color(id)
 }
 
 #[tokio::main]
 async fn main() {
-    let port: u16 = std::env::var("QGISCRAFT_WEB_PORT")
+    let port: u16 = std::env::var("GISCRAFT_WEB_PORT")
         .ok()
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(11254);
@@ -565,7 +565,7 @@ async fn main() {
             eprintln!("bind {addr} failed: {e}");
             std::process::exit(1);
         });
-    println!("qgiscraft-web on http://{addr} (Track B seed; dev console via :11253)");
+    println!("giscraft-web on http://{addr} (Track B seed; dev console via :11253)");
     axum::serve(listener, app).await.unwrap_or_else(|e| {
         eprintln!("serve failed: {e}");
         std::process::exit(1);
@@ -576,9 +576,9 @@ async fn main() {
 mod tests {
     use super::*;
 
-    fn demo_features() -> Vec<qgiscraft_store::StoredFeature> {
+    fn demo_features() -> Vec<giscraft_store::StoredFeature> {
         vec![
-            qgiscraft_store::StoredFeature {
+            giscraft_store::StoredFeature {
                 layer_id: "t".to_string(),
                 name: "A".to_string(),
                 kind: "node".to_string(),
@@ -586,7 +586,7 @@ mod tests {
                 lat: 48.2,
                 geom_json: None,
             },
-            qgiscraft_store::StoredFeature {
+            giscraft_store::StoredFeature {
                 layer_id: "t".to_string(),
                 name: "B".to_string(),
                 kind: "node".to_string(),

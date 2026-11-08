@@ -1,12 +1,12 @@
 [package]
-name = "qgiscraft-mcp"
+name = "giscraft-mcp"
 version = "0.1.0"
 edition = "2021"
-description = "CLI-first MCP server over stdio (thin frame around qgiscraft-core dispatch)"
+description = "CLI-first MCP server over stdio (thin frame around giscraft-core dispatch)"
 license = "MIT OR Apache-2.0"
 
 [[bin]]
-name = "qgiscraft-mcp"
+name = "giscraft-mcp"
 path = "src/main.rs"
 
 [dependencies]
@@ -14,8 +14,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
-qgiscraft-core = { path = "../qgiscraft-core" }
-qgiscraft-store = { path = "../qgiscraft-store" }
+giscraft-core = { path = "../giscraft-core" }
+giscraft-store = { path = "../giscraft-store" }
 
 [lints]
 workspace = true

@@ -1,4 +1,10 @@
-# Changelog - qgiscraft
+# Changelog - giscraft
+
+## Unreleased - rename qgiscraft -> giscraft (repo, crates, binaries, env)
+- GitHub `sandraschi/qgiscraft` -> `sandraschi/giscraft` (old URL redirects); local checkout `D:\Dev\repos\giscraft`.
+- Crates/binaries: `giscraft` (egui app), `giscraft-core`, `giscraft-store`, `giscraft-mcp`, `giscraft-web`; `GisCraftApp`; display name GISCraft.
+- Env vars `QGISCRAFT_*` -> `GISCRAFT_*` (DB, TILES_URL, PHOTON_URL, OVERPASS_URL, CONTROL_PORT, WEB_PORT); default DB `./giscraft.db`. No legacy fallback: rename an existing `qgiscraft.db` by hand.
+- Entries below and dated assessments keep the old name as history. Gates: fmt, clippy -D warnings, 133 tests, xtask ci, app --smoke green.
 
 ## Unreleased - app binary renamed qgiscraft-app -> qgiscraft, repo hygiene
 - Native app crate + binary are now `qgiscraft` (dir `crates/qgiscraft`): `cargo run -p qgiscraft`, `qgiscraft.exe`. justfile (run-app, run-app-smoke, dist), start.ps1, and live docs updated; dated assessments keep the old name as history.

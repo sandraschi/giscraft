@@ -1,6 +1,6 @@
 //! Stdout is pure JSON-RPC. Every log line goes to stderr via `eprintln!`.
 //! The MCP layer never touches geo state; it dispatches `Command` IDs
-//! into `qgiscraft-core` and frames the resulting `serde_json::Value`.
+//! into `giscraft-core` and frames the resulting `serde_json::Value`.
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
@@ -8,9 +8,9 @@
 #![deny(clippy::todo)]
 
 use clap::{Parser, Subcommand};
-use qgiscraft_core::control;
-use qgiscraft_core::{dispatch, Command};
-use qgiscraft_store as store;
+use giscraft_core::control;
+use giscraft_core::{dispatch, Command};
+use giscraft_store as store;
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::sync::OnceLock;
@@ -18,7 +18,7 @@ use tokio::runtime::Runtime;
 
 #[derive(Parser)]
 #[command(
-    name = "qgiscraft-mcp",
+    name = "giscraft-mcp",
     about = "QGIS-class GIS: 1:1 clone shell, modern Rust backend (CLI-first, MCP over stdio)"
 )]
 struct Cli {
@@ -292,7 +292,7 @@ fn run(cmd: Command) -> Value {
 }
 
 /// L2 persistence owner: core dispatch validates, SQLite stores.
-/// `db=None` resolves to `$QGISCRAFT_DB` or `./qgiscraft.db`.
+/// `db=None` resolves to `$GISCRAFT_DB` or `./giscraft.db`.
 /// Forward one tool call to the live app over the control channel.
 /// Returns the app's `result` verbatim, or a typed error object.
 fn forward_control(port: u16, method: &str, params: Value) -> Value {
@@ -522,9 +522,9 @@ fn layer_buffer(
     if feats.is_empty() {
         return json!({"error": format!("layer not found or empty: {layer_id}"), "op": "processing.buffer"});
     }
-    let raw: Vec<qgiscraft_core::import::RawFeature> = feats
+    let raw: Vec<giscraft_core::import::RawFeature> = feats
         .into_iter()
-        .map(|f| qgiscraft_core::import::RawFeature {
+        .map(|f| giscraft_core::import::RawFeature {
             name: f.name,
             kind: f.kind,
             lng: f.lng,
@@ -532,12 +532,14 @@ fn layer_buffer(
             geom_json: f.geom_json,
         })
         .collect();
-    let buffered =
-        match qgiscraft_core::processing::buffer_features(&raw, distance_m, segments.unwrap_or(24))
-        {
-            Ok(b) => b,
-            Err(e) => return json!({"error": e.to_string(), "op": "processing.buffer"}),
-        };
+    let buffered = match giscraft_core::processing::buffer_features(
+        &raw,
+        distance_m,
+        segments.unwrap_or(24),
+    ) {
+        Ok(b) => b,
+        Err(e) => return json!({"error": e.to_string(), "op": "processing.buffer"}),
+    };
     let out_id = output_layer
         .unwrap_or(&format!("{layer_id}-buffer"))
         .to_string();
@@ -911,11 +913,11 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
                 Ok(c) => c,
                 Err(e) => return json!({"error": e.to_string(), "op": "processing.nearest"}),
             };
-            let load = |id: &str| -> Result<Vec<qgiscraft_core::import::RawFeature>, String> {
+            let load = |id: &str| -> Result<Vec<giscraft_core::import::RawFeature>, String> {
                 match store::list_features(&conn, Some(id)) {
                     Ok(rows) => Ok(rows
                         .into_iter()
-                        .map(|f| qgiscraft_core::import::RawFeature {
+                        .map(|f| giscraft_core::import::RawFeature {
                             name: f.name,
                             kind: f.kind,
                             lng: f.lng,
@@ -934,7 +936,7 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
                 Ok(f) => f,
                 Err(e) => return json!({"error": e, "op": "processing.nearest"}),
             };
-            let lines = match qgiscraft_core::processing::nearest_join(&src_feats, &tgt_feats) {
+            let lines = match giscraft_core::processing::nearest_join(&src_feats, &tgt_feats) {
                 Ok(l) => l,
                 Err(e) => return json!({"error": e.to_string(), "op": "processing.nearest"}),
             };
@@ -1066,9 +1068,9 @@ fn call_tool(name: &str, args: &Value, connect: Option<u16>) -> Value {
 /// With `connect`, the DB-touching tools run in the live app instead.
 fn run_mcp_stdio(connect: Option<u16>) {
     if let Some(port) = connect {
-        eprintln!("qgiscraft-mcp: MCP server on stdio, connected to app 127.0.0.1:{port}");
+        eprintln!("giscraft-mcp: MCP server on stdio, connected to app 127.0.0.1:{port}");
     } else {
-        eprintln!("qgiscraft-mcp: MCP server listening on stdio");
+        eprintln!("giscraft-mcp: MCP server listening on stdio");
     }
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
@@ -1103,7 +1105,7 @@ fn run_mcp_stdio(connect: Option<u16>) {
             "initialize" => Some(json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "qgiscraft-mcp", "version": env!("CARGO_PKG_VERSION")},
+                "serverInfo": {"name": "giscraft-mcp", "version": env!("CARGO_PKG_VERSION")},
             })),
             "tools/list" => Some(tools_list()),
             "tools/call" => {
@@ -1146,7 +1148,7 @@ fn run_mcp_stdio(connect: Option<u16>) {
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Status { json } => show(run(Command::Status), json, "qgiscraft-mcp status"),
+        Commands::Status { json } => show(run(Command::Status), json, "giscraft-mcp status"),
         Commands::ProjectStatus { json } => show(run(Command::ProjectStatus), json, "project"),
         Commands::LayerAdd {
             id,
@@ -1397,11 +1399,11 @@ fn main() {
                         return;
                     }
                 };
-                let load = |id: &str| -> Result<Vec<qgiscraft_core::import::RawFeature>, String> {
+                let load = |id: &str| -> Result<Vec<giscraft_core::import::RawFeature>, String> {
                     match store::list_features(&conn, Some(id)) {
                         Ok(rows) => Ok(rows
                             .into_iter()
-                            .map(|f| qgiscraft_core::import::RawFeature {
+                            .map(|f| giscraft_core::import::RawFeature {
                                 name: f.name,
                                 kind: f.kind,
                                 lng: f.lng,
@@ -1415,7 +1417,7 @@ fn main() {
                 let joined = load(&source_layer)
                     .and_then(|s| load(&target_layer).map(|t| (s, t)))
                     .and_then(|(s, t)| {
-                        qgiscraft_core::processing::nearest_join(&s, &t).map_err(|e| e.to_string())
+                        giscraft_core::processing::nearest_join(&s, &t).map_err(|e| e.to_string())
                     });
                 match joined {
                     Err(e) => show(
@@ -1687,7 +1689,7 @@ mod tests {
     #[test]
     fn map_forge_dry_run_returns_single_envelope() {
         let mut p = std::env::temp_dir();
-        p.push(format!("qgiscraft-test-forge-{}.json", std::process::id()));
+        p.push(format!("giscraft-test-forge-{}.json", std::process::id()));
         let doc = r#"{"title":"T","slug":"t-spot","bbox":{"south":48.19,"west":16.35,"north":48.23,"east":16.40},"layers":[{"id":"pharm","key":"amenity","value":"pharmacy"}]}"#;
         if std::fs::write(&p, doc).is_err() {
             return;
@@ -1735,7 +1737,7 @@ mod tests {
     #[test]
     fn doppler_locate_persists_candidates_to_temp_db() {
         let mut cap_path = std::env::temp_dir();
-        cap_path.push(format!("qgiscraft-test-cap-{}.json", std::process::id()));
+        cap_path.push(format!("giscraft-test-cap-{}.json", std::process::id()));
         let mut doc = String::from("{\"tracks\": [[");
         for i in 0..30 {
             if i > 0 {
@@ -1905,7 +1907,7 @@ mod tests {
 
     fn temp_db(tag: &str) -> String {
         let mut p = std::env::temp_dir();
-        p.push(format!("qgiscraft-test-{}-{tag}.db", std::process::id()));
+        p.push(format!("giscraft-test-{}-{tag}.db", std::process::id()));
         let s = p.to_string_lossy().to_string();
         let _ = std::fs::remove_file(&p);
         s

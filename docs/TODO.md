@@ -1,4 +1,4 @@
-# TODO & Gap Roadmap: qgiscraft-mcp
+# TODO & Gap Roadmap: giscraft-mcp
 
 **Status**: Active Working Backlog  
 **Target**: QGIS-class pure-Rust desktop GIS + MCP automation server  
@@ -27,7 +27,7 @@ Our priorities are guided by the repository's core philosophy: **CLI + MCP first
   - *Validation*: Headless unit tests pass in core and MCP temp-DB roundtrip.
 
 - [ ] **Gap 2: Asynchronous Tile Worker (Zero UI Stutter)**
-  - *Current*: `qgiscraft` fetches up to 2 tiles per UI frame synchronously with a 1.5s timeout. Slow or dropped connections cause micro-stutter during rapid panning.
+  - *Current*: `giscraft` fetches up to 2 tiles per UI frame synchronously with a 1.5s timeout. Slow or dropped connections cause micro-stutter during rapid panning.
   - *Action*: Move tile downloads to a decoupled background thread pool or channel (`std::sync::mpsc`). Decoded image buffers stream into an in-memory frame cache.
   - *Validation*: Frame rate stays at locked 60 FPS while panning across cold tile regions.
 
@@ -43,12 +43,12 @@ Our priorities are guided by the repository's core philosophy: **CLI + MCP first
 - [ ] **Gap 4: Attribute Table Dock (`F6` Muscle Memory)**
   - *Current*: Features are only inspectable via map hover tooltips or CLI `features.list`.
   - *Action*: Pressing `F6` or selecting `Layer > Attribute Table` opens a bottom dock with a scrollable tabular view of the selected layer's features (name, kind, coords, geometry type). Clicking a row highlights the feature on the canvas.
-  - *Validation*: UI unit tests in `qgiscraft`.
+  - *Validation*: UI unit tests in `giscraft`.
 
 - [ ] **Gap 5: Symbology & Layer Styling Dock (`Layer > Styling`)**
   - *Current*: Layers use a deterministic 8-color FNV hash palette; users cannot customize colors, point sizes, or line widths.
   - *Action*: In the Layer Styling dock, add controls for point radius, stroke width, fill opacity (0–100%), and color override. Store styles in the SQLite `layers` table or project metadata.
-  - *Validation*: Style persistence roundtrip test in `qgiscraft-store`.
+  - *Validation*: Style persistence roundtrip test in `giscraft-store`.
 
 - [ ] **Gap 6: Pure-Rust Geometry Clip (`processing.rs`)**
   - *Current*: Only `buffer` is implemented in geoprocessing.

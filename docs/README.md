@@ -8,7 +8,7 @@
 | [ARCHITECTURE.md](ARCHITECTURE.md) | L1/L2/L3, command bus, DB-as-project, stdio framing |
 | [ECOSYSTEM.md](ECOSYSTEM.md) | Sources, standards (GTFS et al.), where your maps go, walk-and-photo crossconnect |
 | [WORKFLOWS.md](WORKFLOWS.md) | Worked recipes: question to map, 3 integration paths (bike shops) |
-| [CONFIGURATION.md](CONFIGURATION.md) | Env vars (`QGISCRAFT_*`) |
+| [CONFIGURATION.md](CONFIGURATION.md) | Env vars (`GISCRAFT_*`) |
 | [TOOLS.md](TOOLS.md) | All 10 MCP tools + CLI equivalents |
 | [GLOSSARY.md](GLOSSARY.md) | Plain-language terms: bbox, Overpass, tiles, CRS, ODbL... |
 | [target-app-parity.md](target-app-parity.md) | QGIS scope, oracle loop |

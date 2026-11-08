@@ -10,7 +10,7 @@ than standalone plugins.
 
 A capability that would be a QGIS plugin lands here as:
 
-1. A `Command` variant in `qgiscraft-core` (typed params, headless test),
+1. A `Command` variant in `giscraft-core` (typed params, headless test),
 2. An MCP tool + CLI subcommand in L2 (same dispatch),
 3. A menu entry in the egui app (real action, never a stub label).
 

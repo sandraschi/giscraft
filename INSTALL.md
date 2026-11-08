@@ -1,4 +1,4 @@
-# Installing qgiscraft
+# Installing giscraft
 
 Pre-release: building from source is currently the only install path.
 No NSIS installer and no `.mcpb` bundle exist yet.
@@ -22,19 +22,19 @@ Install these if you don't have them already:
 ## Option A - Native app + CLI (recommended today)
 
 ```powershell
-git clone https://github.com/sandraschi/qgiscraft
-cd qgiscraft
+git clone https://github.com/sandraschi/giscraft
+cd giscraft
 $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
-cargo build -p qgiscraft -p qgiscraft-mcp
-.\target\debug\qgiscraft.exe
+cargo build -p giscraft -p giscraft-mcp
+.\target\debug\giscraft.exe
 ```
 
-The app opens (or creates) `qgiscraft.db` in the working directory.
+The app opens (or creates) `giscraft.db` in the working directory.
 First map in 30 seconds: use the CLI to ingest live pharmacies, then Fit data
 in the app (or press F5 after ingesting while it runs):
 
 ```powershell
-cargo run -q -p qgiscraft-mcp -- overpass-query --key amenity --value pharmacy --south 48.20 --west 16.36 --north 48.22 --east 16.39 --live --ingest --json
+cargo run -q -p giscraft-mcp -- overpass-query --key amenity --value pharmacy --south 48.20 --west 16.36 --north 48.22 --east 16.39 --live --ingest --json
 ```
 
 (Note: the public Overpass API rate-limits; on HTTP 502 wait a minute and retry.)
@@ -47,10 +47,10 @@ Build once (Option A), then register the server in
 ```json
 {
   "mcpServers": {
-    "qgiscraft": {
-      "command": "D:\\Dev\\repos\\qgiscraft\\target\\debug\\qgiscraft-mcp.exe",
+    "giscraft": {
+      "command": "D:\\Dev\\repos\\giscraft\\target\\debug\\giscraft-mcp.exe",
       "args": ["mcp"],
-      "env": { "QGISCRAFT_DB": "D:\\Dev\\repos\\qgiscraft\\qgiscraft.db" }
+      "env": { "GISCRAFT_DB": "D:\\Dev\\repos\\giscraft\\giscraft.db" }
     }
   }
 }

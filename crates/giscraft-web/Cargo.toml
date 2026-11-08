@@ -1,12 +1,12 @@
 [package]
-name = "qgiscraft-web"
+name = "giscraft-web"
 version = "0.1.0"
 edition = "2021"
 description = "Thin HTTP sidecar: same command bus over REST + static console (Track B seed)"
 license = "MIT OR Apache-2.0"
 
 [[bin]]
-name = "qgiscraft-web"
+name = "giscraft-web"
 path = "src/main.rs"
 
 [dependencies]
@@ -17,8 +17,8 @@ axum = "0.7"
 tower-http = { version = "0.5", features = ["cors", "fs"] }
 image = { workspace = true }
 rusqlite = { workspace = true }
-qgiscraft-core = { path = "../qgiscraft-core" }
-qgiscraft-store = { path = "../qgiscraft-store" }
+giscraft-core = { path = "../giscraft-core" }
+giscraft-store = { path = "../giscraft-store" }
 
 [lints]
 workspace = true

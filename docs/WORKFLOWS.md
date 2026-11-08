@@ -1,6 +1,6 @@
 # WORKFLOWS: from question to map
 
-How to answer a concrete question with qgiscraft, three ways.
+How to answer a concrete question with giscraft, three ways.
 Worked example: *"a map tile of Vienna's Innere Stadt with all bike
 repair shops marked."*
 
@@ -20,7 +20,7 @@ a wrong tag, not an empty map.
 
 ## Path A - another app via MCP (agentic)
 
-The calling agent needs the MCP server (`qgiscraft-mcp mcp` on stdio):
+The calling agent needs the MCP server (`giscraft-mcp mcp` on stdio):
 
 1. Dry-run the query (no network side effects, validates the tag):
    `overpass.query` with `{key: "shop", value: "bicycle", south: 48.195,
@@ -33,7 +33,7 @@ The calling agent needs the MCP server (`qgiscraft-mcp mcp` on stdio):
    `/api/preview.png?width=640&height=480` for a PNG to embed.
 
 The caller's contract is JSON in / JSON out; the project DB
-(`QGISCRAFT_DB`, default `./qgiscraft.db`) is the shared ground.
+(`GISCRAFT_DB`, default `./giscraft.db`) is the shared ground.
 
 ## Path B - by hand in the native app
 

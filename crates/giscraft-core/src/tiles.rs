@@ -329,10 +329,10 @@ pub fn parse_layer_color(text: &str) -> Result<Option<(u8, u8, u8)>, crate::erro
 }
 
 /// XYZ tile URL template (`{z}/{x}/{y}` placeholders).
-/// Override with `QGISCRAFT_TILES_URL` (e.g. a local mirror or style).
+/// Override with `GISCRAFT_TILES_URL` (e.g. a local mirror or style).
 /// No network here: pure string handling, so tests stay offline.
 pub fn tile_url_template() -> String {
-    std::env::var("QGISCRAFT_TILES_URL")
+    std::env::var("GISCRAFT_TILES_URL")
         .ok()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| "https://tile.openstreetmap.org/{z}/{x}/{y}.png".to_string())
@@ -378,7 +378,7 @@ pub fn template_key(template: &str) -> String {
 /// `fetch_tile_png` is this with the configured default template.
 pub fn fetch_tile_png_as(tile: Tile, template: &str) -> Result<Vec<u8>, GisError> {
     let mut path = std::env::temp_dir();
-    path.push("qgiscraft-tiles");
+    path.push("giscraft-tiles");
     path.push(template_key(template));
     path.push(format!("{}_{}_{}.png", tile.z, tile.x, tile.y));
     if let Ok(bytes) = std::fs::read(&path) {
@@ -394,7 +394,7 @@ pub fn fetch_tile_png_as(tile: Tile, template: &str) -> Result<Vec<u8>, GisError
     }
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
-        .user_agent("qgiscraft-mcp/0.1 (dev spike, few tiles; OSM attribution shown)")
+        .user_agent("giscraft-mcp/0.1 (dev spike, few tiles; OSM attribution shown)")
         .build()
         .map_err(|e| GisError::Offline(format!("http client: {e}")))?;
     let resp = client

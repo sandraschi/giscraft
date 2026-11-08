@@ -1,6 +1,6 @@
 # Tool Reference (18 MCP tools + matching CLI)
 
-`mcp --connect PORT` drives the running app (`qgiscraft -- --control PORT`)
+`mcp --connect PORT` drives the running app (`giscraft -- --control PORT`)
 for the DB-touching tools, so there is a single writer. See
 [control-protocol.md](control-protocol.md). Without `--connect` everything
 runs headless against the project DB file.
@@ -32,7 +32,7 @@ stdio, MCP 2024-11-05, `initialize` / `tools/list` / `tools/call` / `ping`.
 CLI equivalents: `status`, `project-status`, `layer-add`, `layer-list`, `layer-import`,
 `layer-remove`, `geocode-search [--live]`, `overpass-query [--live] [--ingest] [--db]`,
 `features-list`, `processing-buffer`, `processing-grid --south --west --north --east [--cell-size] [--hex]`, `processing-nearest --source-layer --target-layer`, `processing-geodesic --shape circle --lng --lat --radius_m`, `layer-color --id --color`, `doppler-locate --path --south --west --north --east`, `forge-from-spec --path SPEC [--live] [--ingest] [--db]`, `wkt-show --wkt GEOM [--layer-id] [--db]`, plus `mcp` (serve, `--connect` for the live app). Per-command `--db` overrides
-`$QGISCRAFT_DB`, default `./qgiscraft.db`. Forge depot `depot/maps/*/spec.json` checked by `cargo run -p xtask -- forge`.
+`$GISCRAFT_DB`, default `./giscraft.db`. Forge depot `depot/maps/*/spec.json` checked by `cargo run -p xtask -- forge`.
 
 Hostile input (empty ids, injection in tag keys, out-of-range limits/bbox)
 returns typed `invalid input` errors - never a panic, never silent.

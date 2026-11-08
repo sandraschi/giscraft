@@ -1,4 +1,4 @@
-# qgiscraft (full)
+# giscraft (full)
 
 QGIS-class GIS in pure Rust: clean-room 1:1 clone shell for QGIS muscle
 memory (menus, docks, canvas, shortcuts), modern core, CLI + MCP first.
@@ -7,18 +7,18 @@ No QGIS code inside; QGIS 3.44 LTR is the black-box oracle (plan/qgis/).
 ## Tracks
 
 - Track A (native, working): eframe/egui app + CLI + MCP stdio server.
-  Zero ports, in-process core calls, SQLite project file (`qgiscraft.db`).
+  Zero ports, in-process core calls, SQLite project file (`giscraft.db`).
 - Track B (reserved): ports 11253/11254 claimed for a future webapp.
 
 ## Architecture
 
-L1 `qgiscraft-core`: geo types, `Command::dispatch` (9 ids), Photon/Overpass
+L1 `giscraft-core`: geo types, `Command::dispatch` (9 ids), Photon/Overpass
 clients (opt-in live), slippy tile math + cached fetch, ear-clip triangulation.
-L2 `qgiscraft-mcp`: CLI-first binary + MCP server (MCP 2024-11-05, hand-rolled
+L2 `giscraft-mcp`: CLI-first binary + MCP server (MCP 2024-11-05, hand-rolled
 line-delimited JSON-RPC, stdout pure). Owns SQLite persistence.
-L3 `qgiscraft`: egui shell, owns the DB file, Web Mercator canvas, XYZ
+L3 `giscraft`: egui shell, owns the DB file, Web Mercator canvas, XYZ
 tiles (2 fetches/frame, disk cache), `--smoke` headless BMP preview.
-Store `qgiscraft-store`: rusqlite/bundled, layers + features(+geom_json).
+Store `giscraft-store`: rusqlite/bundled, layers + features(+geom_json).
 
 ## Tools (MCP + CLI)
 
@@ -28,8 +28,8 @@ features.list, export.png (typed unsupported). See docs/TOOLS.md.
 
 ## Config (env only)
 
-QGISCRAFT_DB (default ./qgiscraft.db), QGISCRAFT_TILES_URL,
-QGISCRAFT_PHOTON_URL, QGISCRAFT_OVERPASS_URL. Shown live in Settings menu.
+GISCRAFT_DB (default ./giscraft.db), GISCRAFT_TILES_URL,
+GISCRAFT_PHOTON_URL, GISCRAFT_OVERPASS_URL. Shown live in Settings menu.
 
 ## Gates (AGENTS.md normative)
 

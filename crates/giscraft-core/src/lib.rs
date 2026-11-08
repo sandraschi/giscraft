@@ -156,7 +156,7 @@ fn encode(op: &str, result: Result<Value, GisError>) -> Value {
 pub async fn dispatch(cmd: Command) -> Value {
     match cmd {
         Command::Status => json!({
-            "app": "qgiscraft-mcp",
+            "app": "giscraft-mcp",
             "version": env!("CARGO_PKG_VERSION"),
             "mode": "pure-rust",
             "track": "A-native-egui + B-web-parallel-11253/11254",
@@ -171,7 +171,7 @@ pub async fn dispatch(cmd: Command) -> Value {
             "project": "wien-demo",
             "crs": "EPSG:4326",
             "layers": 0,
-            "note": "Phase 0 scaffold: in-memory only, SQLite store lands via qgiscraft-store",
+            "note": "Phase 0 scaffold: in-memory only, SQLite store lands via giscraft-store",
         }),
         Command::LayerAdd {
             id,

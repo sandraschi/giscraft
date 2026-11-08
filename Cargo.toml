@@ -1,10 +1,10 @@
 [workspace]
 members = [
-    "crates/qgiscraft-core",
-    "crates/qgiscraft-store",
-    "crates/qgiscraft-mcp",
-    "crates/qgiscraft",
-    "crates/qgiscraft-web",
+    "crates/giscraft-core",
+    "crates/giscraft-store",
+    "crates/giscraft-mcp",
+    "crates/giscraft",
+    "crates/giscraft-web",
     "xtask",
 ]
 resolver = "2"
@@ -13,7 +13,7 @@ resolver = "2"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/sandraschi/qgiscraft"
+repository = "https://github.com/sandraschi/giscraft"
 
 [workspace.lints.clippy]
 unwrap_used = "deny"

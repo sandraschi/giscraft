@@ -1,4 +1,4 @@
-# Tentative assessment - qgiscraft-mcp (2026-10-24, post-0.6)
+# Tentative assessment - giscraft-mcp (2026-10-24, post-0.6)
 
 Method: re-read `docs/target-app-parity.md`, `docs/gaps.md`,
 `docs/parity-checklist.md`, `AGENTS.md` against the tree as committed
@@ -52,12 +52,12 @@ independent assfix. Trust the gates (all green, quoted below), not adjectives.
     Overpass builder and Photon locator ARE implemented. Stale the other way.
 - `AGENTS.md` section 2 is stale:
   - L1 "compiles with only `serde` + `serde_json`" - core now also depends
-    on `tokio` + `reqwest` + `qgiscraft-store` (live I/O moved into dispatch).
+    on `tokio` + `reqwest` + `giscraft-store` (live I/O moved into dispatch).
   - "The MCP layer only dispatches `Command` IDs" - L2 now owns SQLite
     persistence (`layer_add/list/remove`, `ingest_hits`). The seam moved;
     the doc did not.
 - **Typo with staying power**: the env var is `QGISCRRAFT_DB` (double R)
-  in `qgiscraft-store`. Rename to `QGISCRAFT_DB` NOW, before any script or
+  in `giscraft-store`. Rename to `GISCRAFT_DB` NOW, before any script or
   Track B webapp depends on the misspelling. Cheap today, breaking later.
 
 ## 4. Risks
@@ -91,7 +91,7 @@ Suggested order: env rename -> docs corrections -> CI file -> basemap spike
 
 ## 6. Cross-check: Gemini assessment `docs/assessment-2026-10-24.md`
 
-Gemini (as "Antigravity Pair Programmer", DOC-ASSESS-QGISCRAFT-20261024-V1)
+Gemini (as "Antigravity Pair Programmer", DOC-ASSESS-GISCRAFT-20261024-V1)
 reviewed baseline `d1438ab` (Phase 0.5). Independent read, same day.
 Agreements and corrections:
 
@@ -115,7 +115,7 @@ processing is right.
   the DB; L2 (`main.rs` helpers) owns persistence. That arrow is exactly
   the seam question, and the diagram picks the side the code did not take.
 - Core compiles with `serde/serde_json/reqwest/tokio` **plus an unused
-  `qgiscraft-store` dep** - either use it or drop it (leaving it invites
+  `giscraft-store` dep** - either use it or drop it (leaving it invites
   exactly this kind of misreading).
 
 **Gemini missed what this assessment caught (still open):**

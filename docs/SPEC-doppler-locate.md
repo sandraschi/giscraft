@@ -3,7 +3,7 @@
 Status: v1 shipped (offline matcher: parse + forward model + correlation rank + top-N scored layer). No 920s gap negative-evidence filter yet; single-capture JSON in; emission clamped to track ends. See CHANGELOG (plugins round 2) for the gate record.
 Source story: colsto "I discovered a sound that leaks your exact location (and it's everywhere)" https://www.youtube.com/watch?v=UytYrhYLOKI - blurry trees/riverbank clip, no GIS metadata, no landmarks, dated Sept 8, continental US. Two inaudible prop-plane Doppler curves 920s apart matched vs ADS-B to ~100m.
 
-## Why this belongs in qgiscraft
+## Why this belongs in giscraft
 
 - It is pure GIS once audio is reduced to curves: candidate grid search 70k -> 15k -> top hit, sound-travel + terrain correction, scored vs spectrogram, persisted as layers, visual check over OSM tiles. That is `processing.*` + `layer.*` work.
 - It reuses what we already do keyless/offline: Photon/Overpass live-opt-in, tile cache, `processing.buffer` great-circle, `fit_view`, temp-DB hermetic tests.
@@ -29,7 +29,7 @@ Params (all validated like `overpass.query` bbox):
 Result JSON:
 `{op:"doppler.locate", count, top:{lng,lat,score}, hits:[{lng,lat,score}], output_layer, live:false}` - hits persisted as point layer via L2 store, same as `overpass --ingest`.
 
-## Math module (new `crates/qgiscraft-core/src/doppler.rs`)
+## Math module (new `crates/giscraft-core/src/doppler.rs`)
 
 Pure, no network, no UI, no store:
 - `doppler_freq(f0, vsrc_radial, c=343.0) -> Result<f64>` with `checked_*` / finite checks.
@@ -49,7 +49,7 @@ All fallible -> `Result<T, GisError>`, no indexing (`get()`), no byte slicing, l
 
 ## L2 / L3 wiring
 
-- L2 `qgiscraft-mcp`: `doppler-locate` CLI + `doppler.locate` tool (12th tool). `tools/list` description: short, imperative, units (degrees, Hz, seconds, meters). Forwards to `dispatch`, then persists hits via store `replace_features` like `overpass --ingest`. Stdio framing unchanged.
+- L2 `giscraft-mcp`: `doppler-locate` CLI + `doppler.locate` tool (12th tool). `tools/list` description: short, imperative, units (degrees, Hz, seconds, meters). Forwards to `dispatch`, then persists hits via store `replace_features` like `overpass --ingest`. Stdio framing unchanged.
 - L3 app: no new dock in v1. Result layer renders as colored dots (existing palette + white halo) + auto `fit_view` + `processing.buffer` 100m ring for the top hit. A "Doppler import" menu entry can wait for v2.
 
 ## Privacy + clean-room notes

@@ -11,7 +11,7 @@ memory or docs. Unverified rows are marked TODO, not assumed.
 
 ## Measured
 
-| Area | QGIS 3.44 | qgiscraft | Status | Evidence |
+| Area | QGIS 3.44 | giscraft | Status | Evidence |
 |---|---|---|---|---|
 | Canvas wheel zoom (no modifier) | TODO observe | implemented (plain-wheel path) | ~ | needs side-by-side check |
 | Canvas Ctrl+wheel zoom | TODO observe | implemented (zoom_delta path) | ~ | was broken pre-1.2 (smooth-channel only); verify live |

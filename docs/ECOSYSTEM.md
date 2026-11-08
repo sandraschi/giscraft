@@ -1,6 +1,6 @@
 # Data ecosystem: sources, standards, and where your maps go
 
-qgiscraft reads the world's free map and writes your own layers. This page
+giscraft reads the world's free map and writes your own layers. This page
 explains where data comes from, which standards matter, and where your
 annotations can live after they leave this app.
 

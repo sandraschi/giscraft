@@ -9,13 +9,13 @@
 #![deny(clippy::todo)]
 
 use eframe::egui;
-use qgiscraft_core::control;
-use qgiscraft_core::geo;
-use qgiscraft_core::import;
-use qgiscraft_core::tiles;
-use qgiscraft_core::triangulate;
-use qgiscraft_core::wkt;
-use qgiscraft_store as store;
+use giscraft_core::control;
+use giscraft_core::geo;
+use giscraft_core::import;
+use giscraft_core::tiles;
+use giscraft_core::triangulate;
+use giscraft_core::wkt;
+use giscraft_store as store;
 use std::collections::HashMap;
 
 /// Modal dialog state. Only one open at a time; Cancel closes without doing.
@@ -135,9 +135,9 @@ struct LayerRow {
     features: u64,
 }
 
-struct QgisCraftApp {
+struct GisCraftApp {
     db_path: String,
-    locale: qgiscraft_core::i18n::AppLocale,
+    locale: giscraft_core::i18n::AppLocale,
     layers: Vec<LayerRow>,
     features: Vec<store::StoredFeature>,
     selected: Option<String>,
@@ -209,14 +209,14 @@ fn high_contrast_dark() -> egui::Visuals {
     visuals
 }
 
-impl QgisCraftApp {
+impl GisCraftApp {
     fn open_with_seed(
         control_rx: Option<std::sync::mpsc::Receiver<control::ControlRequest>>,
     ) -> Self {
         let db_path = store::default_db_path().to_string_lossy().to_string();
         let mut app = Self {
             db_path,
-            locale: qgiscraft_core::i18n::AppLocale::default(),
+            locale: giscraft_core::i18n::AppLocale::default(),
             layers: Vec::new(),
             features: Vec::new(),
             selected: None,
@@ -446,7 +446,7 @@ struct HitInfo {
 }
 
 /// Frame visible features with padding. No-op when nothing is visible.
-impl QgisCraftApp {
+impl GisCraftApp {
     /// Identify the topmost visible feature under a screen point.
     /// Points: within 12px (cos-corrected). Lines: within 12px of any
     /// segment. Polygons: inside, or within 12px of an edge.
@@ -673,7 +673,7 @@ impl QgisCraftApp {
         ) else {
             return;
         };
-        let feats = match qgiscraft_core::processing::grid_features(s, w, n, e, cell, hex) {
+        let feats = match giscraft_core::processing::grid_features(s, w, n, e, cell, hex) {
             Ok(f) => f,
             Err(e) => {
                 self.push_log(format!("grid failed: {e}"));
@@ -733,11 +733,11 @@ impl QgisCraftApp {
         };
         let outcome = match store::open_default() {
             Ok(conn) => {
-                let load = |id: &str| -> Result<Vec<qgiscraft_core::import::RawFeature>, String> {
+                let load = |id: &str| -> Result<Vec<giscraft_core::import::RawFeature>, String> {
                     match store::list_features(&conn, Some(id)) {
                         Ok(rows) => Ok(rows
                             .into_iter()
-                            .map(|f| qgiscraft_core::import::RawFeature {
+                            .map(|f| giscraft_core::import::RawFeature {
                                 name: f.name,
                                 kind: f.kind,
                                 lng: f.lng,
@@ -751,7 +751,7 @@ impl QgisCraftApp {
                 let joined = load(source.trim()).and_then(|s| load(target.trim()).map(|t| (s, t)));
                 match joined {
                     Err(e) => format!("nearest failed: {e}"),
-                    Ok((s, t)) => match qgiscraft_core::processing::nearest_join(&s, &t) {
+                    Ok((s, t)) => match giscraft_core::processing::nearest_join(&s, &t) {
                         Err(e) => format!("nearest failed: {e}"),
                         Ok(lines) => {
                             let rows: Vec<store::StoredFeature> = lines
@@ -832,7 +832,7 @@ impl QgisCraftApp {
             let Some(r) = num(&radius_m, "radius") else {
                 return;
             };
-            match qgiscraft_core::processing::geodesic_circle(x, y, r, 64) {
+            match giscraft_core::processing::geodesic_circle(x, y, r, 64) {
                 Ok(ring) => ring,
                 Err(e) => {
                     self.push_log(format!("geodesic failed: {e}"));
@@ -847,7 +847,7 @@ impl QgisCraftApp {
             ) else {
                 return;
             };
-            match qgiscraft_core::processing::geodesic_ellipse(x, y, a, b, br, 64) {
+            match giscraft_core::processing::geodesic_ellipse(x, y, a, b, br, 64) {
                 Ok(ring) => ring,
                 Err(e) => {
                     self.push_log(format!("geodesic failed: {e}"));
@@ -858,7 +858,7 @@ impl QgisCraftApp {
             let (Some(x2), Some(y2)) = (num(&lng2, "end lng"), num(&lat2, "end lat")) else {
                 return;
             };
-            match qgiscraft_core::processing::xy_to_line(x, y, x2, y2) {
+            match giscraft_core::processing::xy_to_line(x, y, x2, y2) {
                 Ok(pts) => pts,
                 Err(e) => {
                     self.push_log(format!("geodesic failed: {e}"));
@@ -935,7 +935,7 @@ impl QgisCraftApp {
                 return;
             }
         };
-        let cap = match qgiscraft_core::doppler::parse_capture(&text) {
+        let cap = match giscraft_core::doppler::parse_capture(&text) {
             Ok(c) => c,
             Err(e) => {
                 self.push_log(format!("doppler failed: {e}"));
@@ -953,8 +953,8 @@ impl QgisCraftApp {
             .max(bbox.max_lat - bbox.min_lat)
             .max(0.0001);
         let step = (span / 50.0).clamp(0.0005, 1.0);
-        let ranked = match qgiscraft_core::doppler::locate(
-            &qgiscraft_core::doppler::LocateParams {
+        let ranked = match giscraft_core::doppler::locate(
+            &giscraft_core::doppler::LocateParams {
                 south: bbox.min_lat,
                 west: bbox.min_lng,
                 north: bbox.max_lat,
@@ -1301,10 +1301,10 @@ impl QgisCraftApp {
         std::thread::spawn(move || {
             let out: Result<IngestBatch, String> = (|| {
                 let rt = tokio::runtime::Runtime::new().map_err(|e| format!("runtime: {e}"))?;
-                let ql = qgiscraft_core::overpass::build_tag_query(&key, &value, bbox)
+                let ql = giscraft_core::overpass::build_tag_query(&key, &value, bbox)
                     .map_err(|e| e.to_string())?;
                 let hits = rt
-                    .block_on(qgiscraft_core::overpass::execute_ql(&ql))
+                    .block_on(giscraft_core::overpass::execute_ql(&ql))
                     .map_err(|e| e.to_string())?;
                 let slug = slug(&format!("{key}-{value}"));
                 let feats = hits
@@ -1346,7 +1346,7 @@ impl QgisCraftApp {
             let out: Result<IngestBatch, String> = (|| {
                 let rt = tokio::runtime::Runtime::new().map_err(|e| format!("runtime: {e}"))?;
                 let hits = rt
-                    .block_on(qgiscraft_core::geocode::photon_search(&query, limit))
+                    .block_on(giscraft_core::geocode::photon_search(&query, limit))
                     .map_err(|e| e.to_string())?;
                 let slug = format!(
                     "geocode-{}",
@@ -1395,9 +1395,9 @@ impl QgisCraftApp {
                 let conn = store::open_default().map_err(|e| e.to_string())?;
                 let feats =
                     store::list_features(&conn, Some(id.as_str())).map_err(|e| e.to_string())?;
-                let raw: Vec<qgiscraft_core::import::RawFeature> = feats
+                let raw: Vec<giscraft_core::import::RawFeature> = feats
                     .iter()
-                    .map(|f| qgiscraft_core::import::RawFeature {
+                    .map(|f| giscraft_core::import::RawFeature {
                         name: f.name.clone(),
                         kind: f.kind.clone(),
                         lng: f.lng,
@@ -1405,7 +1405,7 @@ impl QgisCraftApp {
                         geom_json: f.geom_json.clone(),
                     })
                     .collect();
-                let buffered = qgiscraft_core::processing::buffer_features(&raw, radius_m, 32)
+                let buffered = giscraft_core::processing::buffer_features(&raw, radius_m, 32)
                     .map_err(|e| e.to_string())?;
                 let features: Vec<store::StoredFeature> = buffered
                     .into_iter()
@@ -1429,11 +1429,11 @@ impl QgisCraftApp {
     }
 
     /// Current view bbox in lng/lat (for "use map canvas extent").
-    fn view_bbox(&self) -> Option<qgiscraft_core::geo::Bbox> {
+    fn view_bbox(&self) -> Option<giscraft_core::geo::Bbox> {
         let rect = self.last_rect?;
         let (wlng, nlat) = unproject(rect.min, self.center_lng, self.center_lat, self.zoom, &rect);
         let (elng, slat) = unproject(rect.max, self.center_lng, self.center_lat, self.zoom, &rect);
-        qgiscraft_core::geo::Bbox::new(wlng, slat, elng, nlat).ok()
+        giscraft_core::geo::Bbox::new(wlng, slat, elng, nlat).ok()
     }
 
     /// Drain finished background downloads into the project DB.
@@ -1929,13 +1929,13 @@ impl QgisCraftApp {
     }
 }
 
-impl Default for QgisCraftApp {
+impl Default for GisCraftApp {
     fn default() -> Self {
         Self::open_with_seed(None)
     }
 }
 
-impl QgisCraftApp {
+impl GisCraftApp {
     /// Poll the control channel (called every frame when `--control` runs).
     /// Drains first, executes after, so no borrow of self overlaps the queue.
     fn poll_control(&mut self) {
@@ -2124,7 +2124,7 @@ impl QgisCraftApp {
                         match render_preview(&feats, &rows, w, h, with_tiles, &tmpl) {
                             Ok(bytes) => {
                                 let mut path = std::env::temp_dir();
-                                path.push(format!("qgiscraft-control-{}.bmp", std::process::id()));
+                                path.push(format!("giscraft-control-{}.bmp", std::process::id()));
                                 match std::fs::write(&path, &bytes) {
                                     Ok(()) => serde_json::json!({"path": path.to_string_lossy()}),
                                     Err(e) => serde_json::json!({"error": format!("write: {e}")}),
@@ -2166,9 +2166,9 @@ impl QgisCraftApp {
                 if feats.is_empty() {
                     return serde_json::json!({"error": format!("layer not found or empty: {layer_id}")});
                 }
-                let raw: Vec<qgiscraft_core::import::RawFeature> = feats
+                let raw: Vec<giscraft_core::import::RawFeature> = feats
                     .into_iter()
-                    .map(|f| qgiscraft_core::import::RawFeature {
+                    .map(|f| giscraft_core::import::RawFeature {
                         name: f.name,
                         kind: f.kind,
                         lng: f.lng,
@@ -2177,7 +2177,7 @@ impl QgisCraftApp {
                     })
                     .collect();
                 let buffered =
-                    match qgiscraft_core::processing::buffer_features(&raw, distance_m, segments) {
+                    match giscraft_core::processing::buffer_features(&raw, distance_m, segments) {
                         Ok(b) => b,
                         Err(e) => return serde_json::json!({"error": e.to_string()}),
                     };
@@ -2222,7 +2222,7 @@ impl QgisCraftApp {
     }
 }
 
-impl eframe::App for QgisCraftApp {
+impl eframe::App for GisCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.poll_control();
         self.poll_pending();
@@ -2258,7 +2258,7 @@ impl eframe::App for QgisCraftApp {
         egui::Panel::top("menubar").show(ui, |ui| {
             ui.horizontal(|ui| {
                 let loc = self.locale;
-                use qgiscraft_core::i18n::{t, I18nKey};
+                use giscraft_core::i18n::{t, I18nKey};
 
                 ui.menu_button(t(I18nKey::MenuProject, loc), |ui| {
                     let label = if self.confirm_new {
@@ -2343,11 +2343,11 @@ impl eframe::App for QgisCraftApp {
                     }
                 });
                 ui.menu_button(t(I18nKey::MenuHelp, loc), |ui| {
-                    if ui.button("QGISCraft Handbook & GIS Guide...").clicked() {
+                    if ui.button("GISCraft Handbook & GIS Guide...").clicked() {
                         self.show_help = true;
                     }
                     ui.separator();
-                    if ui.button("About qgiscraft").clicked() {
+                    if ui.button("About giscraft").clicked() {
                         self.show_about = true;
                     }
                 });
@@ -2452,7 +2452,7 @@ impl eframe::App for QgisCraftApp {
                     egui::ComboBox::from_id_salt("topbar_locale_selector")
                         .selected_text(label)
                         .show_ui(ui, |ui| {
-                            for loc_item in qgiscraft_core::i18n::AppLocale::all() {
+                            for loc_item in giscraft_core::i18n::AppLocale::all() {
                                 let text =
                                     format!("{} {}", loc_item.flag(), loc_item.display_name());
                                 let _ = ui.selectable_value(&mut self.locale, *loc_item, text);
@@ -2462,7 +2462,7 @@ impl eframe::App for QgisCraftApp {
             });
         });
         if self.show_help {
-            egui::Window::new("📖 QGISCraft Comprehensive Handbook & Spatial Guide")
+            egui::Window::new("📖 GISCraft Comprehensive Handbook & Spatial Guide")
                 .min_width(680.0)
                 .min_height(480.0)
                 .show(ui.ctx(), |ui| {
@@ -2480,10 +2480,10 @@ impl eframe::App for QgisCraftApp {
                         ui.label("disaster response teams (Humanitarian OSM), intelligence analysts, and outdoor explorers.");
 
                         ui.add_space(8.0);
-                        ui.heading("3. What is QGISCraft?");
+                        ui.heading("3. What is GISCraft?");
                         ui.label("A sovereign, clean-room 1:1 QGIS clone shell written in pure Rust (egui 0.37).");
                         ui.label("• Preserves QGIS muscle memory, menu layouts, shortcuts (Ctrl+Shift+F, F5), and dock interactions.");
-                        ui.label("• Database-as-Project: Entire project state lives in one self-contained SQLite file (qgiscraft.db).");
+                        ui.label("• Database-as-Project: Entire project state lives in one self-contained SQLite file (giscraft.db).");
                         ui.label("• Agentic AI & MCP First: 100% of spatial functions can be operated headlessly by AI via MCP.");
 
                         ui.add_space(8.0);
@@ -2508,8 +2508,8 @@ impl eframe::App for QgisCraftApp {
                 });
         }
         if self.show_about {
-            egui::Window::new("About qgiscraft").show(ui.ctx(), |ui| {
-                ui.label(format!("qgiscraft-mcp {}", env!("CARGO_PKG_VERSION")));
+            egui::Window::new("About giscraft").show(ui.ctx(), |ui| {
+                ui.label(format!("giscraft-mcp {}", env!("CARGO_PKG_VERSION")));
                 ui.label("QGIS-class GIS: 1:1 clone shell, modern Rust core.");
                 ui.label("CLI + MCP (stdio) + native egui, one command bus.");
                 ui.label("Tiles (c) OpenStreetMap contributors (ODbL).");
@@ -2525,18 +2525,18 @@ impl eframe::App for QgisCraftApp {
                 ui.monospace(format!("project db : {}", self.db_path));
                 ui.monospace(format!(
                     "tiles      : {}",
-                    qgiscraft_core::tiles::tile_url_template()
+                    giscraft_core::tiles::tile_url_template()
                 ));
                 ui.monospace(format!(
                     "photon     : {}",
-                    qgiscraft_core::geocode::photon_base()
+                    giscraft_core::geocode::photon_base()
                 ));
                 ui.monospace(format!(
                     "overpass   : {}",
-                    qgiscraft_core::overpass::overpass_url()
+                    giscraft_core::overpass::overpass_url()
                 ));
                 ui.label("Override via environment before launch:");
-                ui.monospace("QGISCRAFT_DB / QGISCRAFT_TILES_URL / QGISCRAFT_PHOTON_URL / QGISCRAFT_OVERPASS_URL");
+                ui.monospace("GISCRAFT_DB / GISCRAFT_TILES_URL / GISCRAFT_PHOTON_URL / GISCRAFT_OVERPASS_URL");
                 ui.label("Restart the app to apply changes.");
                 if ui.button("Close").clicked() {
                     self.show_settings = false;
@@ -3451,10 +3451,10 @@ fn render_preview(
 /// one-line summary, exit 0. Opens no window. Also renders a BMP map
 /// preview next to the DB temp dir so windowless runs can see the map.
 fn smoke() {
-    let app = QgisCraftApp::open_with_seed(None);
+    let app = GisCraftApp::open_with_seed(None);
     let total_features: u64 = app.layers.iter().map(|l| l.features).sum();
     println!(
-        "qgiscraft smoke: {} layers, {} features, db={}",
+        "giscraft smoke: {} layers, {} features, db={}",
         app.layers.len(),
         total_features,
         app.db_path
@@ -3466,7 +3466,7 @@ fn smoke() {
         );
     }
     let mut preview_path = std::env::temp_dir();
-    preview_path.push(format!("qgiscraft-preview-{}.bmp", std::process::id()));
+    preview_path.push(format!("giscraft-preview-{}.bmp", std::process::id()));
     match render_preview(
         &app.features,
         &app.layers,
@@ -3497,7 +3497,7 @@ fn control_port_from_args() -> Option<u16> {
             return None;
         }
     }
-    std::env::var("QGISCRAFT_CONTROL_PORT")
+    std::env::var("GISCRAFT_CONTROL_PORT")
         .ok()
         .and_then(|raw| raw.trim().parse::<u16>().ok())
         .filter(|port| *port != 0)
@@ -3513,7 +3513,7 @@ fn main() {
         match std::net::TcpListener::bind(format!("127.0.0.1:{port}")) {
             Ok(listener) => {
                 eprintln!(
-                    "qgiscraft control listening on 127.0.0.1:{port} (no auth: local use only)"
+                    "giscraft control listening on 127.0.0.1:{port} (no auth: local use only)"
                 );
                 std::thread::spawn(move || control::serve(listener, control_tx));
             }
@@ -3522,7 +3522,7 @@ fn main() {
     }
     let control_rx = control_port.map(|_| control_rx);
     let viewport = egui::ViewportBuilder::default()
-        .with_title("qgiscraft")
+        .with_title("giscraft")
         .with_inner_size([1280.0, 860.0])
         .with_min_inner_size([900.0, 600.0]);
     let options = eframe::NativeOptions {
@@ -3530,15 +3530,15 @@ fn main() {
         ..Default::default()
     };
     let result = eframe::run_native(
-        "qgiscraft",
+        "giscraft",
         options,
         Box::new(move |cc| {
             cc.egui_ctx.set_visuals(high_contrast_dark());
-            Ok(Box::new(QgisCraftApp::open_with_seed(control_rx)))
+            Ok(Box::new(GisCraftApp::open_with_seed(control_rx)))
         }),
     );
     if let Err(e) = result {
-        eprintln!("qgiscraft exited: {e}");
+        eprintln!("giscraft exited: {e}");
     }
 }
 
@@ -3733,10 +3733,10 @@ mod tests {
         assert_eq!(layer_color("a"), layer_color("a"));
     }
 
-    fn test_app(features: Vec<store::StoredFeature>, visible: bool) -> QgisCraftApp {
-        QgisCraftApp {
+    fn test_app(features: Vec<store::StoredFeature>, visible: bool) -> GisCraftApp {
+        GisCraftApp {
             db_path: ":memory:".to_string(),
-            locale: qgiscraft_core::i18n::AppLocale::default(),
+            locale: giscraft_core::i18n::AppLocale::default(),
             layers: vec![LayerRow {
                 id: "rx".to_string(),
                 name: "Rx".to_string(),

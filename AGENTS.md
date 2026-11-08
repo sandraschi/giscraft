@@ -1,4 +1,4 @@
-# AGENTS.md - qgiscraft (storytold craft pattern, adapted)
+# AGENTS.md - giscraft (storytold craft pattern, adapted)
 
 QGIS-class GIS: clean-room 1:1 clone for muscle memory, modern Rust backend,
 CLI + MCP first. Dual track: Track A native egui clone, Track B sandraschi
@@ -25,17 +25,17 @@ webapp parallel on 11253/11254 for users who never learned QGIS.
 
 ## 2. Architecture and seams (corrected post-0.6; was aspirational)
 
-- L1 `qgiscraft-core`: geo types, project model, command bus, plus live
+- L1 `giscraft-core`: geo types, project model, command bus, plus live
   network clients (Photon, Overpass). UI-free and transport-free, but NOT
   I/O-free: `dispatch` performs keyless live lookups when asked.
-  Deps: `serde` + `serde_json` + `tokio` + `reqwest` + `qgiscraft-store`
+  Deps: `serde` + `serde_json` + `tokio` + `reqwest` + `giscraft-store`
   (the store dep is currently unused - use it or drop it).
   Tests stay offline: live paths are opt-in (`live=false` default) and
   never exercised in `cargo test`.
-- `qgiscraft-store`: SQLite project store (rusqlite bundled). Layers +
+- `giscraft-store`: SQLite project store (rusqlite bundled). Layers +
   features + visible + counts, explicit child-delete (FK cascade is OFF
-  in SQLite by default). No UI/MCP/network. Env: `QGISCRAFT_DB`.
-- L2 `qgiscraft-mcp`: CLI-first binary + MCP `mcp` subcommand over stdio
+  in SQLite by default). No UI/MCP/network. Env: `GISCRAFT_DB`.
+- L2 `giscraft-mcp`: CLI-first binary + MCP `mcp` subcommand over stdio
   (MCP 2024-11-05, hand-rolled line-delimited framing). No `rmcp` dep.
   L2 OWNS persistence: `layer_add/list/remove`, `ingest_hits`,
   `features_list` live here and call the store directly; core `dispatch`
@@ -43,7 +43,7 @@ webapp parallel on 11253/11254 for users who never learned QGIS.
   (Earlier doc claimed L2 "only dispatches Command IDs" - no longer true
   since 0.2, and that is intentional: it keeps core dispatch tests
   hermetic without temp-DB plumbing.)
-- L3 `qgiscraft`: eframe/egui native clone. Owns the project DB file
+- L3 `giscraft`: eframe/egui native clone. Owns the project DB file
   directly (open/seed/list/add/remove/visible persist); calls core
   `project`/`project()` math in-process for rendering, never shells out
   to the MCP binary, never uses local HTTP/JSON-RPC for the desktop path.

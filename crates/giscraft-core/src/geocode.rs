@@ -30,9 +30,9 @@ pub fn demo_search(query: &str, limit: u8) -> Result<Vec<Hit>, GisError> {
     }])
 }
 
-/// Photon base URL (keyless). Override with `QGISCRAFT_PHOTON_URL`.
+/// Photon base URL (keyless). Override with `GISCRAFT_PHOTON_URL`.
 pub fn photon_base() -> String {
-    std::env::var("QGISCRAFT_PHOTON_URL")
+    std::env::var("GISCRAFT_PHOTON_URL")
         .ok()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| "https://photon.komoot.io/api/".to_string())
@@ -50,7 +50,7 @@ pub async fn photon_search(query: &str, limit: u8) -> Result<Vec<Hit>, GisError>
     }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(12))
-        .user_agent("qgiscraft-mcp/0.1 (Photon live; OSM attribution)")
+        .user_agent("giscraft-mcp/0.1 (Photon live; OSM attribution)")
         .build()
         .map_err(|e| GisError::Offline(format!("http client: {e}")))?;
     let resp = client

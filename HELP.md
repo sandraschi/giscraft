@@ -1,6 +1,6 @@
-# QGISCraft Comprehensive Manual & Spatial Intelligence Handbook
+# GISCraft Comprehensive Manual & Spatial Intelligence Handbook
 
-**QGISCraft Local-First Spatial Intelligence Engine & QGIS Clean-Room Implementation**  
+**GISCraft Local-First Spatial Intelligence Engine & QGIS Clean-Room Implementation**  
 **Version**: 0.2.0  
 **Domain**: Geographic Information Systems (GIS), Geodesy, Chrono-Cartography, Overpass/OSM Harvesting, Doppler Signal Triangulation, Vector Spatial Processing  
 **Control Port**: `11254` (Backend + MCP HTTP) / `11253` (Web Interface) / Pure Native SQLite Project Track
@@ -19,7 +19,7 @@ At its core, GIS links **location** (where things are on Earth) with **attribute
 2. **The Raster Model**: Represents continuous space as grid cells / pixels (satellite imagery, elevation heatmaps/DEMs, radar returns, and tiled map basemaps like OpenStreetMap Web Mercator `EPSG:3857`).
 3. **Coordinate Reference Systems (CRS)**: Mathematical models transforming the irregular, 3D gravitational geoid of planet Earth onto a flat 2D viewport.
    - **EPSG:4326 (WGS 84)**: Standard GPS spherical coordinates in angular degrees $(\text{latitude}, \text{longitude})$.
-   - **EPSG:3857 (Web Mercator)**: Conformal projection used by modern web maps and QGISCraft that renders tiles as perfect squares while preserving angles at local scale.
+   - **EPSG:3857 (Web Mercator)**: Conformal projection used by modern web maps and GISCraft that renders tiles as perfect squares while preserving angles at local scale.
 
 ---
 
@@ -42,28 +42,28 @@ It is the open-source counterpart to proprietary commercial cartography software
 
 ---
 
-## 3. What Is QGISCraft?
+## 3. What Is GISCraft?
 
-**QGISCraft** is a local-first, clean-room 1:1 QGIS shell implementation written from the ground up in pure **Rust**.
+**GISCraft** is a local-first, clean-room 1:1 QGIS shell implementation written from the ground up in pure **Rust**.
 
-### Why QGISCraft?
+### Why GISCraft?
 Traditional QGIS is a massive C++ / Qt5 / Python codebase spanning over 20 years of legacy dependencies (GDAL, PROJ, GEOS, PyQGIS, SpatiaLite). It is heavy to embed, slow to spin up headlessly, and difficult for autonomous AI agents to drive cleanly.
 
-**QGISCraft solves this by decoupling the QGIS experience into a modern local-first architecture:**
+**GISCraft solves this by decoupling the QGIS experience into a modern local-first architecture:**
 1. **Preserves QGIS Muscle Memory**: Retains the iconic menus, shortcuts (`Ctrl+Z`, `Ctrl+Shift+K`, `F5`, `Ctrl+Alt+S`), left-hand Browser & Layers docks, and canvas behavior.
 2. **Pure-Rust Zero-Panic Core**: Built with `#![deny(clippy::unwrap_used)]` zero-panic containment.
-3. **Database-as-Project (`.qgz` equivalent)**: The entire project state (layers, styles, geometries, CRS, caches) is stored in a single local SQLite database file (`qgiscraft.db`), eliminating fragmented project files.
+3. **Database-as-Project (`.qgz` equivalent)**: The entire project state (layers, styles, geometries, CRS, caches) is stored in a single local SQLite database file (`giscraft.db`), eliminating fragmented project files.
 4. **Agentic AI & MCP-First**: Every single UI action corresponds directly to a typed variant on the `Command` bus. An AI assistant (via Anthropic/DeepMind MCP stdio) can geocode places, execute live Overpass queries, compute geodesic buffers, and export maps with the exact same authority as a human clicking the mouse.
 
 ---
 
 ## 4. Current Architecture & Existing Features
 
-QGISCraft is structured into a modular multi-tier workspace:
-- **`crates/qgiscraft-core`**: The foundational GIS engine, spatial indexing, coordinate projection (EPSG:4326 $\leftrightarrow$ EPSG:3857), Overpass QL parser, and command bus.
-- **`crates/qgiscraft-store`**: SQLite-backed feature and layer storage with transactional commits.
-- **`crates/qgiscraft-mcp`**: High-performance stdio MCP server for agentic interaction and CLI (`qgiscraft-mcp`).
-- **`crates/qgiscraft`**: Native immediate-mode desktop studio built in Rust using `egui 0.37` and `eframe`.
+GISCraft is structured into a modular multi-tier workspace:
+- **`crates/giscraft-core`**: The foundational GIS engine, spatial indexing, coordinate projection (EPSG:4326 $\leftrightarrow$ EPSG:3857), Overpass QL parser, and command bus.
+- **`crates/giscraft-store`**: SQLite-backed feature and layer storage with transactional commits.
+- **`crates/giscraft-mcp`**: High-performance stdio MCP server for agentic interaction and CLI (`giscraft-mcp`).
+- **`crates/giscraft`**: Native immediate-mode desktop studio built in Rust using `egui 0.37` and `eframe`.
 
 ### Currently Implemented Features:
 1. **Keyless Geocoding**:
@@ -90,7 +90,7 @@ QGISCraft is structured into a modular multi-tier workspace:
 
 ## 5. Planned Capabilities & Roadmap
 
-1. **TravelCraft & QGISCraft Bridge (Chrono-GIS)**:
+1. **TravelCraft & GISCraft Bridge (Chrono-GIS)**:
    - Direct spatial ingestion into TravelCraft’s Baedeker 2030 engine.
    - Historical map vector overlays (e.g. Edo-period Tokyo roads juxtaposed over modern Shinjuku GPS coordinates).
 2. **GeoTIFF & Digital Elevation Model (DEM) Hillshading**:
@@ -104,7 +104,7 @@ QGISCraft is structured into a modular multi-tier workspace:
 
 ---
 
-## 6. How To Use QGISCraft
+## 6. How To Use GISCraft
 
 ### Desktop GUI Navigation
 - **Pan**: Left-click and drag anywhere on the canvas.
@@ -119,17 +119,17 @@ When connected via Claude Desktop, Antigravity, or the CLI:
 
 ```bash
 # Check status and loaded layers
-qgiscraft-mcp status --json
+giscraft-mcp status --json
 
 # Geocode an address
-qgiscraft-mcp geocode-search --query "Stephansplatz Vienna" --json
+giscraft-mcp geocode-search --query "Stephansplatz Vienna" --json
 
 # Harvest OpenStreetMap features into a new layer
-qgiscraft-mcp overpass-query --key amenity --value pharmacy --ingest --layer-id pharmacies_vienna --json
+giscraft-mcp overpass-query --key amenity --value pharmacy --ingest --layer-id pharmacies_vienna --json
 
 # Create geodesic search ring around a target coordinate
-qgiscraft-mcp processing-geodesic --shape circle --lng 16.3738 --lat 48.2082 --radius-m 2500 --layer-id perimeter_2500m --json
+giscraft-mcp processing-geodesic --shape circle --lng 16.3738 --lat 48.2082 --radius-m 2500 --layer-id perimeter_2500m --json
 
 # Export high-res cartographic render
-qgiscraft-mcp export-png --output map.png --width 1920 --height 1080 --json
+giscraft-mcp export-png --output map.png --width 1920 --height 1080 --json
 ```

@@ -1,4 +1,4 @@
-# qgiscraft
+# giscraft
 
 QGIS-class GIS in pure Rust: a clean-room 1:1 clone shell for QGIS muscle
 memory, with a modern core, CLI + MCP first, and no 2005 backend cruft.
@@ -46,7 +46,7 @@ no `.mcpb` yet). It takes one command chain:
 ```powershell
 winget install Rustlang.Rustup
 # + "Desktop development with C++" (MSVC linker, required on Windows)
-cargo run -p qgiscraft --
+cargo run -p giscraft --
 ```
 
 Everything else - Claude Desktop wiring, env vars, verification prompt -

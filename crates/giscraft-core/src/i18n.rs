@@ -1,4 +1,4 @@
-//! QGISCraft Internationalization (i18n) Engine.
+//! GISCraft Internationalization (i18n) Engine.
 //!
 //! Follows the fleet standard: typed locale enums, zero-panic string lookups,
 //! multi-language translations (EN, DE, FR, ES, JA, KO, ZH),

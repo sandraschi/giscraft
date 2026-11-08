@@ -19,7 +19,7 @@ export function App() {
   const mapRef = useRef(null);
   const overlayRef = useRef(null);
   const [layers, setLayers] = useState([]);
-  const [log, setLog] = useState(['qgiscraft console ready.']);
+  const [log, setLog] = useState(['giscraft console ready.']);
   const [query, setQuery] = useState('Stephansplatz');
   const [tag, setTag] = useState('amenity=pharmacy');
 
@@ -110,7 +110,7 @@ export function App() {
   return (
     <div className="layout">
       <div className="header">
-        <h1>qgiscraft console</h1>
+        <h1>giscraft console</h1>
         <span className="status">Track B seed - same DB as the native app + MCP. Tiles: (c) OpenStreetMap contributors.</span>
       </div>
       <div className="sidebar">

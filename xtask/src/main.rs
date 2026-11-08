@@ -56,8 +56,8 @@ fn layers() -> i32 {
     // L6 rule: nothing below L3 depends on egui/eframe.
     // Minimal check: core + store must not mention egui/eframe in Cargo.toml.
     let files = [
-        "crates/qgiscraft-core/Cargo.toml",
-        "crates/qgiscraft-store/Cargo.toml",
+        "crates/giscraft-core/Cargo.toml",
+        "crates/giscraft-store/Cargo.toml",
     ];
     for path in files {
         match std::fs::read_to_string(path) {
@@ -80,7 +80,7 @@ fn layers() -> i32 {
 fn parity() -> i32 {
     // Presence checklist: every command in core lib.rs must appear in docs/parity-checklist.md
     // and in mcp tools_list. Minimal grep, no unwrap.
-    let lib = match std::fs::read_to_string("crates/qgiscraft-core/src/lib.rs") {
+    let lib = match std::fs::read_to_string("crates/giscraft-core/src/lib.rs") {
         Ok(t) => t,
         Err(e) => {
             eprintln!("xtask parity: cannot read core lib.rs: {e}");

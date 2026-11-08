@@ -157,9 +157,9 @@ fn centroid(coords: &[(f64, f64)]) -> (f64, f64) {
 }
 
 /// Overpass interpreter URL (keyless public instance).
-/// Override with `QGISCRAFT_OVERPASS_URL` (own mirror recommended).
+/// Override with `GISCRAFT_OVERPASS_URL` (own mirror recommended).
 pub fn overpass_url() -> String {
-    std::env::var("QGISCRAFT_OVERPASS_URL")
+    std::env::var("GISCRAFT_OVERPASS_URL")
         .ok()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| "https://overpass-api.de/api/interpreter".to_string())
@@ -176,7 +176,7 @@ pub async fn execute_ql(ql: &str) -> Result<Vec<OverpassHit>, GisError> {
     }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
-        .user_agent("qgiscraft-mcp/0.1 (Overpass; OSM attribution)")
+        .user_agent("giscraft-mcp/0.1 (Overpass; OSM attribution)")
         .build()
         .map_err(|e| GisError::Offline(format!("http client: {e}")))?;
     let mut attempt: u32 = 0;

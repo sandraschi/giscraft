@@ -336,7 +336,7 @@ pub fn feature_counts(conn: &Connection) -> Result<Vec<(String, u64)>, StoreErro
     Ok(out)
 }
 
-/// Default project DB path: explicit `--db` > `$QGISCRAFT_DB` > `./qgiscraft.db`.
+/// Default project DB path: explicit `--db` > `$GISCRAFT_DB` > `./giscraft.db`.
 /// Explicit param keeps tests hermetic (unique temp files, no env mutation).
 pub fn resolve_db_path(explicit: Option<&str>) -> std::path::PathBuf {
     if let Some(raw) = explicit {
@@ -355,16 +355,16 @@ pub fn open_at(explicit: Option<&str>) -> Result<Connection, StoreError> {
     Ok(conn)
 }
 
-/// Default project DB path: `$QGISCRAFT_DB` or `./qgiscraft.db`.
+/// Default project DB path: `$GISCRAFT_DB` or `./giscraft.db`.
 /// Env override keeps ad-hoc runs hermetic (point it at a temp file).
 pub fn default_db_path() -> std::path::PathBuf {
-    if let Ok(raw) = std::env::var("QGISCRAFT_DB") {
+    if let Ok(raw) = std::env::var("GISCRAFT_DB") {
         let trimmed = raw.trim();
         if !trimmed.is_empty() {
             return std::path::PathBuf::from(trimmed);
         }
     }
-    std::path::PathBuf::from("qgiscraft.db")
+    std::path::PathBuf::from("giscraft.db")
 }
 
 /// Open the default DB and ensure schema. Used by CLI/MCP persistence.

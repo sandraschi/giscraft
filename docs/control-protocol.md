@@ -1,7 +1,7 @@
 # Control protocol
 
 The running app speaks JSON lines on `127.0.0.1` when started with
-`--control <port>` (or `QGISCRAFT_CONTROL_PORT`). Mirrors the storytold
+`--control <port>` (or `GISCRAFT_CONTROL_PORT`). Mirrors the storytold
 artcraft contract (`designcraft --control`), trimmed to our surface.
 
 - One request object per line, one reply per line. Blank lines skipped.
@@ -13,7 +13,7 @@ artcraft contract (`designcraft --control`), trimmed to our surface.
 - No auth: enable only while you use it.
 - Replies: `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error"}`.
 
-`qgiscraft -- --control 7979`
+`giscraft -- --control 7979`
 
 ## Methods
 
@@ -35,7 +35,7 @@ local (network or headless reads, no app state involved).
 ## MCP usage
 
 ```json
-{ "command": "qgiscraft-mcp.exe", "args": ["mcp", "--connect", "7979"] }
+{ "command": "giscraft-mcp.exe", "args": ["mcp", "--connect", "7979"] }
 ```
 
 With `--connect`, `layer.add` in Claude appears in the app after F5

@@ -1736,6 +1736,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "giscraft"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "giscraft-core",
+ "giscraft-store",
+ "rfd",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "giscraft-core"
+version = "0.1.0"
+dependencies = [
+ "giscraft-store",
+ "image",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "giscraft-mcp"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "giscraft-core",
+ "giscraft-store",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "giscraft-store"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "giscraft-web"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "giscraft-core",
+ "giscraft-store",
+ "image",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower-http 0.5.2",
+]
+
+[[package]]
 name = "gl_generator"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3579,67 +3640,6 @@ name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
-
-[[package]]
-name = "qgiscraft"
-version = "0.1.0"
-dependencies = [
- "eframe",
- "egui",
- "qgiscraft-core",
- "qgiscraft-store",
- "rfd",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "qgiscraft-core"
-version = "0.1.0"
-dependencies = [
- "image",
- "qgiscraft-store",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "qgiscraft-mcp"
-version = "0.1.0"
-dependencies = [
- "clap",
- "qgiscraft-core",
- "qgiscraft-store",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "qgiscraft-store"
-version = "0.1.0"
-dependencies = [
- "rusqlite",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "qgiscraft-web"
-version = "0.1.0"
-dependencies = [
- "axum",
- "image",
- "qgiscraft-core",
- "qgiscraft-store",
- "rusqlite",
- "serde",
- "serde_json",
- "tokio",
- "tower-http 0.5.2",
-]
 
 [[package]]
 name = "qoi"

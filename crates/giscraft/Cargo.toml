@@ -1,12 +1,12 @@
 [package]
-name = "qgiscraft"
+name = "giscraft"
 version = "0.1.0"
 edition = "2021"
 description = "L3 native egui clone (QGIS muscle-memory shell, in-process dispatch)"
 license = "MIT OR Apache-2.0"
 
 [[bin]]
-name = "qgiscraft"
+name = "giscraft"
 path = "src/main.rs"
 
 [dependencies]
@@ -15,8 +15,8 @@ eframe = { workspace = true }
 egui = { workspace = true }
 rfd = { workspace = true }
 tokio = { workspace = true }
-qgiscraft-core = { path = "../qgiscraft-core" }
-qgiscraft-store = { path = "../qgiscraft-store" }
+giscraft-core = { path = "../giscraft-core" }
+giscraft-store = { path = "../giscraft-store" }
 
 [lints]
 workspace = true

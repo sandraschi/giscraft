@@ -1,7 +1,7 @@
 # Glossary
 
 Plain-language definitions for the terms this project throws around.
-Entries marked **(app)** are qgiscraft concepts; the rest is shared GIS vocabulary.
+Entries marked **(app)** are giscraft concepts; the rest is shared GIS vocabulary.
 
 **bbox** - Bounding box: a rectangle on the map given as
 `min_lng, min_lat, max_lng, max_lat` (e.g. `48.20, 16.36, 48.22, 16.39`
@@ -41,7 +41,7 @@ Earth's, GPX is GPS tracks from hikes and bike rides). Import planned;
 GeoJSON and CSV work today.
 
 **Identify** - QGIS's "click the map, tell me what's here" tool.
-In qgiscraft: hovering shows a tooltip; clicking selects the feature's layer
+In giscraft: hovering shows a tooltip; clicking selects the feature's layer
 and pins name + coordinates to the status bar.
 
 **id (Overpass)** - Not to confuse with the iD editor: Overpass also has a
@@ -102,8 +102,8 @@ geodata tools (buffer, download, geocode) with dialogs, runnable one by one.
 **QGIS** - The free, open-source desktop GIS we clone the *behavior* of
 (menus, docks, canvas conventions). Clean-room: no QGIS code or assets here.
 
-**QGISCRAFT_DB** - Env var pointing at our project database (default
-`qgiscraft.db` in the working directory). The file *is* the project.
+**GISCRAFT_DB** - Env var pointing at our project database (default
+`giscraft.db` in the working directory). The file *is* the project.
 
 **raster / vector** - The two map data kinds. Vector = geometry with
 coordinates (points, lines, polygons: crisp at any zoom). Raster = pixels
@@ -131,7 +131,7 @@ the map.
 
 **WMS / WMTS / WFS** - OGC web-service standards for maps (rendered images,
 cached tiles, raw vector features respectively). Supported in QGIS;
-in qgiscraft only XYZ tile endpoints so far.
+in giscraft only XYZ tile endpoints so far.
 
 **WKT / WKB** - Well-Known Text/Binary: compact geometry encodings
 (`POINT(16.3 48.2)`). What databases (PostGIS/SpatiaLite) store natively.
