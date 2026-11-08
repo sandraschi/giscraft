@@ -1737,7 +1737,7 @@ dependencies = [
 
 [[package]]
 name = "giscraft"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eframe",
  "egui",
@@ -1750,7 +1750,7 @@ dependencies = [
 
 [[package]]
 name = "giscraft-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "giscraft-store",
  "image",
@@ -1762,7 +1762,7 @@ dependencies = [
 
 [[package]]
 name = "giscraft-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "giscraft-core",
@@ -1774,7 +1774,7 @@ dependencies = [
 
 [[package]]
 name = "giscraft-store"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rusqlite",
  "serde",
@@ -1783,7 +1783,7 @@ dependencies = [
 
 [[package]]
 name = "giscraft-web"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "giscraft-core",
@@ -5846,7 +5846,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "y4m"

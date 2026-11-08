@@ -1,6 +1,6 @@
 [package]
 name = "giscraft-web"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Thin HTTP sidecar: same command bus over REST + static console (Track B seed)"
 license = "MIT OR Apache-2.0"

@@ -1,6 +1,6 @@
 [package]
 name = "giscraft"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "L3 native egui clone (QGIS muscle-memory shell, in-process dispatch)"
 license = "MIT OR Apache-2.0"

@@ -1,5 +1,10 @@
 # Changelog - giscraft
 
+## Unreleased
+
+## 0.2.0 (2026-11-08, alpha)
+Everything below, down to 0.1.0, ships in this release. The entry headings below still say Unreleased. Breaking: crates, binaries and env vars were renamed from qgiscraft to giscraft (see the rename entry).
+
 ## Unreleased - rename qgiscraft -> giscraft (repo, crates, binaries, env)
 - GitHub `sandraschi/qgiscraft` -> `sandraschi/giscraft` (old URL redirects); local checkout `D:\Dev\repos\giscraft`.
 - Crates/binaries: `giscraft` (egui app), `giscraft-core`, `giscraft-store`, `giscraft-mcp`, `giscraft-web`; `GisCraftApp`; display name GISCraft.

@@ -1,6 +1,6 @@
 [package]
 name = "giscraft-mcp"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "CLI-first MCP server over stdio (thin frame around giscraft-core dispatch)"
 license = "MIT OR Apache-2.0"
