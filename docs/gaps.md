@@ -21,7 +21,7 @@ DONE:
 - Single projection core (`tiles::project/unproject/fit_view/recenter/meters_per_pixel/nice_scale_bar/layer_color`); app + headless BMP share it, web uses it for fit/tiles.
 - Overpass retries (3 attempts, backoff) on 502/503/429/timeouts; public-API flakiness no longer kills a demo.
 - Canvas chrome: scale bar (nice 1/2/5 m/km), north arrow, per-layer color dots in dock, live `1:N + bar` readout.
-- `just dist`: naked-PC zip (release exes + README/INSTALL/CHANGELOG + START-HERE).
+- `just dist`: the three release exes as plain files plus `SHA256SUMS.txt` in `dist/` (no zip).
 - Plugin reimplementations shipped: QuickWKT -> `wkt.show` (paste WKT -> layer + fit, single + multi, 2D), Lat Lon Tools zoom -> Plugins "Zoom to coordinates" (`geo::parse_latlng`, N/S/E/W; copy-coords still open), QGIS "Create grid" -> `processing.grid` (rect/hex, 10k cap), NNJoin -> `processing.nearest` (hub lines with distances), Shape Tools -> `processing.geodesic` (true-distance circle/ellipse/line), single-symbol color -> `layer.color` (#rrggbb per layer, styled in dock/canvas/preview/web), colsto geolocation -> `doppler.locate` MVP (offline curve-vs-track rank -> scored layer; no 920s gap filter yet).
 
 NEXT (in sequence):

@@ -60,7 +60,8 @@ run-console:
 build-release:
     $env:Path = "$env:USERPROFILE\\.cargo\\bin;$env:Path"; cargo build --release --workspace
 
-# Naked-PC dist: release binaries + docs, zipped (no installer yet).
-# Output: dist/giscraft-<version>-win64.zip (gitignored).
+# Release assets: the three release exes as plain files plus SHA256SUMS.txt in dist/
+# (gitignored). No zip, see mcd standards/rust-artcraft/RELEASE_FACTORY.md.
+# Upload: gh release upload v<version> dist/* --clobber
 dist: build-release
-    $repo = (Get-Location).Path; $ver = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"' | Select-Object -First 1).Matches[0].Groups[1].Value; $out = Join-Path $repo "dist"; $stage = Join-Path $out "giscraft-$ver-win64"; New-Item -ItemType Directory -Path $stage -Force | Out-Null; Copy-Item (Join-Path $repo "target/release/giscraft.exe") $stage; Copy-Item (Join-Path $repo "target/release/giscraft-mcp.exe") $stage; Copy-Item (Join-Path $repo "target/release/giscraft-web.exe") $stage; Copy-Item (Join-Path $repo "README.md") $stage; Copy-Item (Join-Path $repo "INSTALL.md") $stage; Copy-Item (Join-Path $repo "CHANGELOG.md") $stage; Set-Content -Path (Join-Path $stage "START-HERE.txt") -Value "giscraft $ver (Windows 64-bit)`r`n`r`n1. Double-click giscraft.exe for the map (creates giscraft.db next door).`r`n2. Details: README.md, INSTALL.md.`r`n3. MCP: giscraft-mcp.exe mcp (stdio). Web: giscraft-web.exe (http://127.0.0.1:11254).`r`n"; $zip = Join-Path $out "giscraft-$ver-win64.zip"; if (Test-Path $zip) { Remove-Item $zip }; Compress-Archive -Path $stage -DestinationPath $zip; Write-Host "dist: $zip"
+    $ErrorActionPreference = "Stop"; $out = Join-Path (Get-Location).Path "dist"; if (Test-Path $out) { Remove-Item $out -Recurse -Force }; New-Item -ItemType Directory -Path $out -Force | Out-Null; $exes = "giscraft.exe", "giscraft-mcp.exe", "giscraft-web.exe"; foreach ($e in $exes) { Copy-Item (Join-Path "target/release" $e) $out }; $sums = foreach ($e in $exes) { "{0}  {1}" -f (Get-FileHash (Join-Path $out $e) -Algorithm SHA256).Hash.ToLower(), $e }; [IO.File]::WriteAllText((Join-Path $out "SHA256SUMS.txt"), (($sums -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false)); $sums; Write-Host "dist: $out"
