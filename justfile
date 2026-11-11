@@ -60,8 +60,9 @@ run-console:
 build-release:
     $env:Path = "$env:USERPROFILE\\.cargo\\bin;$env:Path"; cargo build --release --workspace
 
-# Release assets: the three release exes as plain files plus SHA256SUMS.txt in dist/
-# (gitignored). No zip, see mcd standards/rust-artcraft/RELEASE_FACTORY.md.
+# Release assets in dist/ (gitignored): the three release exes as plain files, the
+# launcher-only giscraft-<version>-windows-x64-portable.zip (same exes) and SHA256SUMS.txt
+# over all of them. See mcd standards/rust-artcraft/RELEASE_FACTORY.md.
 # Upload: gh release upload v<version> dist/* --clobber
 dist: build-release
-    $ErrorActionPreference = "Stop"; $out = Join-Path (Get-Location).Path "dist"; if (Test-Path $out) { Remove-Item $out -Recurse -Force }; New-Item -ItemType Directory -Path $out -Force | Out-Null; $exes = "giscraft.exe", "giscraft-mcp.exe", "giscraft-web.exe"; foreach ($e in $exes) { Copy-Item (Join-Path "target/release" $e) $out }; $sums = foreach ($e in $exes) { "{0}  {1}" -f (Get-FileHash (Join-Path $out $e) -Algorithm SHA256).Hash.ToLower(), $e }; [IO.File]::WriteAllText((Join-Path $out "SHA256SUMS.txt"), (($sums -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false)); $sums; Write-Host "dist: $out"
+    $ErrorActionPreference = "Stop"; $out = Join-Path (Get-Location).Path "dist"; if (Test-Path $out) { Remove-Item $out -Recurse -Force }; New-Item -ItemType Directory -Path $out -Force | Out-Null; $exes = "giscraft.exe", "giscraft-mcp.exe", "giscraft-web.exe"; foreach ($e in $exes) { Copy-Item (Join-Path "target/release" $e) $out }; $ver = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"' | Select-Object -First 1).Matches[0].Groups[1].Value; $zip = "giscraft-$ver-windows-x64-portable.zip"; Compress-Archive -Path ($exes | ForEach-Object { Join-Path $out $_ }) -DestinationPath (Join-Path $out $zip) -Force; $sums = foreach ($e in ($exes + $zip)) { "{0}  {1}" -f (Get-FileHash (Join-Path $out $e) -Algorithm SHA256).Hash.ToLower(), $e }; [IO.File]::WriteAllText((Join-Path $out "SHA256SUMS.txt"), (($sums -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false)); $sums; Write-Host "dist: $out"
