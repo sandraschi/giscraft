@@ -1,0 +1,105 @@
+{
+  "manifest_version": "0.2",
+  "name": "giscraft",
+  "display_name": "GisCraft",
+  "version": "__VERSION__",
+  "description": "L3 native egui clone (QGIS muscle-memory shell, in-process dispatch)",
+  "author": {
+    "name": "Sandra Schipal",
+    "url": "https://github.com/sandraschi"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sandraschi/giscraft"
+  },
+  "license": "MIT OR Apache-2.0",
+  "server": {
+    "type": "binary",
+    "entry_point": "giscraft-mcp.exe",
+    "mcp_config": {
+      "command": "${__dirname}/giscraft-mcp.exe",
+      "args": [
+        "mcp"
+      ]
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "win32"
+    ]
+  },
+  "tools": [
+    {
+      "name": "status",
+      "description": "Show app status (mode, commands, contract)"
+    },
+    {
+      "name": "project.status",
+      "description": "Project DB status: db path, layer count, visible layers, feature count, CRS values in use (SQLite project DB; db optional)"
+    },
+    {
+      "name": "layer.add",
+      "description": "Add a layer: id, name required; source, geom_type, crs, visible, db optional"
+    },
+    {
+      "name": "layer.list",
+      "description": "List layers in draw order (SQLite project DB; db optional)"
+    },
+    {
+      "name": "layer.remove",
+      "description": "Remove a layer by id (db optional)"
+    },
+    {
+      "name": "layer.color",
+      "description": "Set a layer display color: id required, color #rrggbb (empty clears to palette), db optional"
+    },
+    {
+      "name": "geocode.search",
+      "description": "Search places: query required, limit 1..50, live=false demo else Photon"
+    },
+    {
+      "name": "overpass.query",
+      "description": "Overpass tag search: key/value required, bbox south/west/north/east optional, live=false dry-runs QL else executes; ingest=true writes hits to db"
+    },
+    {
+      "name": "features.list",
+      "description": "List ingested point features, optionally filtered to one layer (db optional)"
+    },
+    {
+      "name": "layer.import",
+      "description": "Import a GeoJSON/CSV file as a layer: format auto-detected by extension or explicit (geojson|csv); layer_id defaults to the file stem; persists to db"
+    },
+    {
+      "name": "processing.buffer",
+      "description": "Buffer point features of a layer into circle polygons: layer_id required; distance (meters, default 200.0), segments (8..256, default 24), output_layer, db optional"
+    },
+    {
+      "name": "processing.grid",
+      "description": "Build a rect or hex grid over a bbox: south/west/north/east required; cell_size meters (default 500), hex flag, output_layer, db optional; persists to db"
+    },
+    {
+      "name": "processing.nearest",
+      "description": "Nearest-neighbor join: hub lines from source_layer to closest target_layer feature; output_layer, db optional; persists to db"
+    },
+    {
+      "name": "processing.geodesic",
+      "description": "True-distance shape: circle (radius_m), ellipse (major_m/minor_m/bearing_deg) or line (lng2/lat2) around lng/lat; segments, output_layer, db optional; persists to db"
+    },
+    {
+      "name": "map.forge",
+      "description": "Forge a map from a MapSpec JSON file: path required; live=false dry-runs QL per layer else executes; ingest=true writes live hits to db"
+    },
+    {
+      "name": "wkt.show",
+      "description": "Show WKT geometry as a layer: wkt required (POINT/LINESTRING/POLYGON + MULTI, 2D only); layer_id, db optional; persists to db"
+    },
+    {
+      "name": "doppler.locate",
+      "description": "Doppler geolocation: rank grid candidates by matching curves to ADS-B tracks; path to capture JSON required; bbox, step_deg, top_n, terrain_m, output_layer, db optional; persists top candidates to db"
+    },
+    {
+      "name": "export.png",
+      "description": "Export map PNG (Phase 1 render path)"
+    }
+  ]
+}
