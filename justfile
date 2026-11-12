@@ -66,3 +66,15 @@ build-release:
 # Upload: gh release upload v<version> dist/* --clobber
 dist: build-release
     $ErrorActionPreference = "Stop"; $out = Join-Path (Get-Location).Path "dist"; if (Test-Path $out) { Remove-Item $out -Recurse -Force }; New-Item -ItemType Directory -Path $out -Force | Out-Null; $exes = "giscraft.exe", "giscraft-mcp.exe", "giscraft-web.exe"; foreach ($e in $exes) { Copy-Item (Join-Path "target/release" $e) $out }; $ver = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"' | Select-Object -First 1).Matches[0].Groups[1].Value; $zip = "giscraft-$ver-windows-x64-portable.zip"; Compress-Archive -Path ($exes | ForEach-Object { Join-Path $out $_ }) -DestinationPath (Join-Path $out $zip) -Force; $sums = foreach ($e in ($exes + $zip)) { "{0}  {1}" -f (Get-FileHash (Join-Path $out $e) -Algorithm SHA256).Hash.ToLower(), $e }; [IO.File]::WriteAllText((Join-Path $out "SHA256SUMS.txt"), (($sums -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false)); $sums; Write-Host "dist: $out"
+
+# Headless check: app and CLI smoke from scripts/craft.config.psd1 (throwaway database).
+smoke:
+    powershell -NoProfile -ExecutionPolicy Bypass -File start.ps1 -Smoke
+
+# Build and stage dist/ (plain exes, installer, launcher zip, SHA256SUMS). Nothing is published.
+release-dry:
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1
+
+# Same, then tag, push the tag and upload to GitHub (clean, pushed trunk required).
+release:
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1 -Publish
