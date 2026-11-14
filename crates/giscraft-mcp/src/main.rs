@@ -86,7 +86,7 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Geocode search (demo default: Vienna; --live hits Photon, keyless)
+    /// Geocode search (default: offline city table, error if unknown; --live hits Photon, keyless)
     GeocodeSearch {
         #[arg(long)]
         query: String,
@@ -668,7 +668,7 @@ fn tools_list() -> Value {
             {"name": "layer.list", "description": "List layers in draw order (SQLite project DB; db optional)", "inputSchema": {"type": "object", "properties": {"db": {"type": "string"}}}},
             {"name": "layer.remove", "description": "Remove a layer by id (db optional)", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "db": {"type": "string"}}, "required": ["id"]}},
             {"name": "layer.color", "description": "Set a layer display color: id required, color #rrggbb (empty clears to palette), db optional", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "color": {"type": "string"}, "db": {"type": "string"}}, "required": ["id"]}},
-            {"name": "geocode.search", "description": "Search places: query required, limit 1..50, live=false demo else Photon", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "live": {"type": "boolean"}}, "required": ["query"]}},
+            {"name": "geocode.search", "description": "Search places: query required, limit 1..50; live=false uses the offline city table (15 cities, error if unknown), live=true uses Photon", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "live": {"type": "boolean"}}, "required": ["query"]}},
             {"name": "overpass.query", "description": "Overpass tag search: key/value required, bbox south/west/north/east optional, live=false dry-runs QL else executes; ingest=true writes hits to db", "inputSchema": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}, "south": {"type": "number"}, "west": {"type": "number"}, "north": {"type": "number"}, "east": {"type": "number"}, "live": {"type": "boolean"}, "ingest": {"type": "boolean"}, "db": {"type": "string"}}, "required": ["key", "value"]}},
             {"name": "features.list", "description": "List ingested point features, optionally filtered to one layer (db optional)", "inputSchema": {"type": "object", "properties": {"layer_id": {"type": "string"}, "db": {"type": "string"}}}},
             {"name": "layer.import", "description": "Import a GeoJSON/CSV file as a layer: format auto-detected by extension or explicit (geojson|csv); layer_id defaults to the file stem; persists to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "format": {"type": "string"}, "layer_id": {"type": "string"}, "db": {"type": "string"}}, "required": ["path"]}},

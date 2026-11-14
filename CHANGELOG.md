@@ -1,6 +1,7 @@
 # Changelog - giscraft
 
 ## Unreleased
+- Tier 0 truth pass: `geocode.search` with `live=false` now answers from the offline city table and returns an `offline` error for unknown places (was: a canned Stephansplatz hit). `geocode::demo_search` replaced by `offline_search`. Help text, README and PRD no longer claim features that do not exist. `docs/TIERED_PLAN.md` rewritten with proven checkboxes and a lens tier; old assessments moved to `docs/archive/`.
 
 ## 0.2.1 (2026-11-08, alpha)
 - Go to place (View menu, Ctrl+G, Plugins): jump the map by place name or `lat, lng`. Known cities (AT/JP plus a few world cities) resolve offline; any other name goes to the live Photon geocoder; failures are logged and never move the map. Replaces the coordinates-only dialog.

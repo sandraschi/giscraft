@@ -1,5 +1,10 @@
 # giscraft
 
+![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)
+![Rust 1.90+](https://img.shields.io/badge/rust-1.90%2B-orange?logo=rust)
+![MCP stdio](https://img.shields.io/badge/MCP-stdio-purple)
+![ArtCraft harness](https://img.shields.io/badge/ArtCraft-harness-green)
+
 QGIS-class GIS in pure Rust: a clean-room 1:1 clone shell for QGIS muscle
 memory, with a modern core, CLI + MCP first, and no 2005 backend cruft.
 
@@ -28,7 +33,7 @@ picture: [docs/WRAPPEE.md](docs/WRAPPEE.md). Our plugin answer vs
 command bus. SQLite project file *is* the project (our `.qgz`). Zero ports
 for the native track; no accounts, no keys (Photon/Overpass/tiles are keyless).
 
-- Geocode places (Photon live, Vienna demo offline), search the map
+- Geocode places (Photon live, offline table of 15 cities), search the map
 - Query OpenStreetMap via fenced Overpass builder (dry-run QL or live execute)
 - Ingest hits as layers (points, lines, polygons) into the project DB
 - Render vectors over cached XYZ tiles: per-layer colors, concave fills, labels
@@ -55,7 +60,7 @@ is in [INSTALL.md](INSTALL.md). Developers: [docs/DEVELOPMENT.md](docs/DEVELOPME
 ## Example Prompts
 
 > "Search for Stephansplatz and show it on the map"
-> *(geocode.search, demo offline or live with `--live`)*
+> *(geocode.search, offline city table or live with `--live`)*
 
 > "Find all pharmacies in Vienna's 1st district and ingest them as a layer"
 > *(overpass.query key=amenity value=pharmacy + bbox, `--live --ingest`)*
@@ -79,7 +84,7 @@ is in [INSTALL.md](INSTALL.md). Developers: [docs/DEVELOPMENT.md](docs/DEVELOPME
 | [UI parity](docs/ui-parity.md) | Measured checklist vs running QGIS |
 | [Development](docs/DEVELOPMENT.md) | Setup, recipes, gates |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues |
-| [Assessment](docs/assessment.md) | Tentative self-review + cross-checks |
+| [Assessment](docs/assessment-2026-11-12-fable.md) | Current assessment; older ones in docs/archive |
 
 ## Requirements
 
@@ -95,7 +100,7 @@ MIT OR Apache-2.0. QGIS itself is GPLv2+ and not included; map tiles
 
 **Does today:** 5 crates + xtask; 25 docs files; 133 test fns; justfile;
 clone-shell GUI (QGIS muscle memory) + headless MCP/CLI (9 tools);
-`--smoke` BMP map preview; keyless Photon/Overpass with offline demo.
+`--smoke` BMP map preview; keyless Photon/Overpass, offline city table.
 
 **Next week:** 3 democraft recipes (geocode-layer, overpass-fenced,
 render-preview); travelcraft boundary paragraph; live-service

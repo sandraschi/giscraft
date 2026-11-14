@@ -212,7 +212,12 @@ pub async fn dispatch(cmd: Command) -> Value {
                 return json!({"error": "invalid input: limit must be 1..50", "op": "geocode.search"});
             }
             if !live {
-                json!({"query": query, "limit": lim, "results": [{"name": "Stephansplatz, Wien", "lng": 16.3738, "lat": 48.2082, "source": "demo"}], "live": false})
+                match geocode::offline_search(&query, lim) {
+                    Ok(hits) => {
+                        json!({"query": query, "limit": lim, "results": hits, "live": false})
+                    }
+                    Err(e) => json!({"error": e.to_string(), "op": "geocode.search"}),
+                }
             } else {
                 match geocode::photon_search(&query, lim).await {
                     Ok(hits) => {
@@ -898,14 +903,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn geocode_demo_round_trip() {
+    async fn geocode_offline_round_trip() {
+        let v = dispatch(Command::GeocodeSearch {
+            query: "Wien".to_string(),
+            limit: None,
+            live: false,
+        })
+        .await;
+        assert_eq!(v.get("live").and_then(|b| b.as_bool()), Some(false));
+        assert_eq!(
+            v.pointer("/results/0/source").and_then(|s| s.as_str()),
+            Some("offline-city-table")
+        );
+    }
+
+    #[tokio::test]
+    async fn geocode_offline_unknown_place_is_an_error() {
         let v = dispatch(Command::GeocodeSearch {
             query: "Stephansplatz".to_string(),
             limit: None,
             live: false,
         })
         .await;
-        assert_eq!(v.get("live").and_then(|b| b.as_bool()), Some(false));
+        let err = v.get("error").and_then(|e| e.as_str()).unwrap_or("");
+        assert!(err.contains("no offline match"), "got: {v}");
+        assert!(v.get("results").is_none(), "invented results: {v}");
     }
 
     #[tokio::test]

@@ -9,13 +9,17 @@
 | [ECOSYSTEM.md](ECOSYSTEM.md) | Sources, standards (GTFS et al.), where your maps go, walk-and-photo crossconnect |
 | [WORKFLOWS.md](WORKFLOWS.md) | Worked recipes: question to map, 3 integration paths (bike shops) |
 | [CONFIGURATION.md](CONFIGURATION.md) | Env vars (`GISCRAFT_*`) |
-| [TOOLS.md](TOOLS.md) | All 10 MCP tools + CLI equivalents |
+| [TOOLS.md](TOOLS.md) | MCP tools + CLI equivalents |
 | [GLOSSARY.md](GLOSSARY.md) | Plain-language terms: bbox, Overpass, tiles, CRS, ODbL... |
 | [target-app-parity.md](target-app-parity.md) | QGIS scope, oracle loop |
 | [ui-parity.md](ui-parity.md) | Measured checklist vs running QGIS |
-| [assessment.md](assessment.md) | Self-review + cross-checks |
-| [assessment-2026-10-24-phase-1.1.md](assessment-2026-10-24-phase-1.1.md) | Independent (Gemini) assessment, Phase 1.1 |
+| [TIERED_PLAN.md](TIERED_PLAN.md) | The plan: tiers with honest checkboxes, lens tier, order |
 | [gaps.md](gaps.md) | Ranked work list |
+| [TODO.md](TODO.md) | Gap write-ups with validation criteria |
+| [PRD.md](PRD.md) | Product goals (goals are marked as goals) |
+| [assessment-2026-11-12-fable.md](assessment-2026-11-12-fable.md) | Current assessment: audience, QoL, conformance, lens design |
+| [PHASE0-foundations.md](PHASE0-foundations.md) | Phase 0 design: honesty fixes (done) and store foundations |
+| [archive/](archive/) | Superseded assessments (2026-10-24 to 2026-11-08) |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Setup, recipes, gates |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Problem -> Cause -> Fix |
 | [map-preview.png](map-preview.png) | Headless-rendered live map |

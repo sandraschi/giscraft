@@ -2565,7 +2565,7 @@ impl eframe::App for GisCraftApp {
 
                         ui.add_space(8.0);
                         ui.heading("4. Key Features Existing & Operational");
-                        ui.label("• Keyless Photon Geocoding & Offline Vienna Index (Stephansplatz, Karlsplatz, etc.).");
+                        ui.label("• Keyless Photon geocoding, plus an offline table of 15 major cities.");
                         ui.label("• Live OpenStreetMap Overpass Harvesting (query any tag, e.g. amenity=pharmacy, and ingest).");
                         ui.label("• Geodesic Spatial Toolbox: Great-circle buffers, circles, ellipses, nearest-neighbor, grids.");
                         ui.label("• SIGINT / Doppler Emitter Localization: Triangulates radio transmitters from satellite flyovers.");

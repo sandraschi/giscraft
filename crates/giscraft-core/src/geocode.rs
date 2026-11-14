@@ -1,4 +1,4 @@
-//! Geocode: demo default (offline, deterministic), Photon live env-gated.
+//! Geocode: offline city table by default (real hits or a clear error), Photon live.
 //! Live path never panics: every network/parse failure becomes `GisError`.
 use crate::error::GisError;
 use serde::{Deserialize, Serialize};
@@ -12,8 +12,9 @@ pub struct Hit {
     pub source: String,
 }
 
-/// Offline deterministic demo (Vienna). No network, no env.
-pub fn demo_search(query: &str, limit: u8) -> Result<Vec<Hit>, GisError> {
+/// Offline search: the built-in city table only. No network, no env. A place that
+/// is not in the table is an error, never a made-up hit.
+pub fn offline_search(query: &str, limit: u8) -> Result<Vec<Hit>, GisError> {
     if query.trim().is_empty() {
         return Err(GisError::InvalidInput(
             "query must not be empty".to_string(),
@@ -22,14 +23,20 @@ pub fn demo_search(query: &str, limit: u8) -> Result<Vec<Hit>, GisError> {
     if limit == 0 || limit > 50 {
         return Err(GisError::InvalidInput("limit must be 1..50".to_string()));
     }
-    Ok(vec![Hit {
-        name: format!("{}, Wien (demo)", query.trim()),
-        lng: 16.3738,
-        lat: 48.2082,
-        source: "demo".to_string(),
-    }])
+    match city_lookup(query) {
+        Some((name, lat, lng)) => Ok(vec![Hit {
+            name: name.to_string(),
+            lng,
+            lat,
+            source: "offline-city-table".to_string(),
+        }]),
+        None => Err(GisError::Offline(format!(
+            "no offline match for '{}' (the offline table has {} cities); use live=true for the Photon geocoder",
+            query.trim(),
+            CITIES.len()
+        ))),
+    }
 }
-
 /// Photon base URL (keyless). Override with `GISCRAFT_PHOTON_URL`.
 pub fn photon_base() -> String {
     std::env::var("GISCRAFT_PHOTON_URL")
@@ -115,20 +122,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn demo_is_deterministic_and_offline() {
-        let hits = demo_search("Stephansplatz", 5);
-        assert!(hits.is_ok());
-        if let Ok(hits) = hits {
-            assert_eq!(hits.len(), 1);
-            assert_eq!(hits[0].source, "demo");
-        }
+    fn offline_search_returns_real_table_hits() {
+        let hits = offline_search("tokio", 5).unwrap_or_default();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].name, "Tokyo");
+        assert_eq!(hits[0].source, "offline-city-table");
+        assert!((hits[0].lat - 35.68).abs() < 0.1);
+    }
+
+    #[test]
+    fn offline_search_unknown_place_is_an_error_not_a_canned_hit() {
+        let out = offline_search("Stephansplatz", 5);
+        assert!(matches!(out, Err(GisError::Offline(_))), "got: {out:?}");
+        assert!(offline_search("Atlantis", 5).is_err());
     }
 
     #[test]
     fn hostile_inputs_rejected_without_network() {
-        assert!(demo_search("", 5).is_err());
-        assert!(demo_search("Wien", 0).is_err());
-        assert!(demo_search("Wien", 51).is_err());
+        assert!(offline_search("", 5).is_err());
+        assert!(offline_search("Wien", 0).is_err());
+        assert!(offline_search("Wien", 51).is_err());
     }
 }
 
