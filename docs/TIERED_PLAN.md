@@ -77,7 +77,7 @@ catalog and never opens the photo; it gets replaced, not extended.
 
 | Step | Work | Days |
 |---|---|---|
-| L1 | `lens-core`: image file in, Ollama vision (gemma4) out, ranked candidates with evidence, "not sure" allowed, typed errors, no hardcoded confidence | 1 |
+| L1 | DONE 2026-11-14: `D:\Dev\repos\lenscraft` (`lenscraft-core` + `lenscraft-mcp`), photo in, ranked candidates with evidence out, verdict + basis, 27 tests, live-tested | 1 |
 | L2 | Label-first path (photo of the wall label), venue narrowing from position, grounding from Wikidata and Wikipedia, long-form analysis in 30 s / 3 min / 10 min lengths with sourced facts marked | 1 |
 | L3 | Speech out: sentence-streamed TTS. Decide speech-mcp (:10909, running) vs speechcraft after checking what speechcraft really does | 0.5-1 |
 | L4 | `lens-server` on Goliath behind `tailscale serve`; home-screen web page with camera, mic, location, compass for iPhone and GPD; put the iPhone on the tailnet | 1 |
@@ -87,6 +87,12 @@ catalog and never opens the photo; it gets replaced, not extended.
 | L8 | Collection packs: per-museum image embeddings from Wikidata/Commons (KHM first) for nearest-neighbour matching | 2 |
 
 Lens is usable in a museum after L4 (about 4 days). L5 to L8 raise quality.
+
+L1 findings that shape L2 to L8 (live, gemma4:12b): about 3 s per photo warm; recognition alone
+gave a confidently wrong title about one run in five, so `identified` needs text in the photo
+that names the title, and L2 grounding (Wikidata) is the next lever. Text-dense photos make the
+model loop; capped and retried once. Ollama reports `audio` capability for gemma4:12b and e4b,
+so speech in (L5) may not need a separate STT engine: test before choosing speech-mcp or speechcraft.
 
 ## Order
 1. Tier 0 (0.5 day).
