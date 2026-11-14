@@ -12,7 +12,7 @@
     Backend = @{
         Kind          = 'cargo-run'
         McpCrate      = 'giscraft-mcp'
-        Env           = @{ WEB_PORT = '11254' }
+        Env           = @{ WEB_PORT = '11254'; GISCRAFT_WEB_PORT = '11254' }
     }
     Frontend = @{
         Kind           = 'vite-npm'
