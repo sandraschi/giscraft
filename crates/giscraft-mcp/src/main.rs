@@ -680,6 +680,7 @@ fn tools_list() -> Value {
             {"name": "wkt.show", "description": "Show WKT geometry as a layer: wkt required (POINT/LINESTRING/POLYGON + MULTI, 2D only); layer_id, db optional; persists to db", "inputSchema": {"type": "object", "properties": {"wkt": {"type": "string"}, "layer_id": {"type": "string"}, "db": {"type": "string"}}, "required": ["wkt"]}},
             {"name": "doppler.locate", "description": "Doppler geolocation: rank grid candidates by matching curves to ADS-B tracks; path to capture JSON required; bbox, step_deg, top_n, terrain_m, output_layer, db optional; persists top candidates to db", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "south": {"type": "number"}, "west": {"type": "number"}, "north": {"type": "number"}, "east": {"type": "number"}, "step_deg": {"type": "number"}, "top_n": {"type": "integer"}, "terrain_m": {"type": "number"}, "output_layer": {"type": "string"}, "db": {"type": "string"}}, "required": ["path"]}},
             {"name": "export.png", "description": "Export map PNG (Phase 1 render path)", "inputSchema": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}}},
+            {"name": "giscraft_skill_read", "description": "Read a bundled GisCraft domain skill (SKILL.md) by name", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
         ]
     })
 }
@@ -1139,6 +1140,13 @@ fn call_tool_inner(name: &str, args: &Value, connect: Option<u16>) -> Value {
                 .and_then(|v| v.as_u64())
                 .and_then(|n| u32::try_from(n).ok()),
         }),
+        "giscraft_skill_read" => {
+            let n = str_arg(args, "name").unwrap_or_default();
+            match giscraft_core::skills::skill_read(&n) {
+                Ok(v) => v,
+                Err(e) => json!({"error": e}),
+            }
+        }
         _ => json!({"error": format!("unknown tool: {name}")}),
     };
     json!({"content": [{"type": "text", "text": result.to_string()}]})
@@ -1184,7 +1192,7 @@ fn run_mcp_stdio(connect: Option<u16>) {
         let result: Option<Value> = match method {
             "initialize" => Some(json!({
                 "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}},
+                "capabilities": {"tools": {}, "resources": {"listChanged": false}},
                 "serverInfo": {"name": "giscraft-mcp", "version": env!("CARGO_PKG_VERSION")},
             })),
             "tools/list" => Some(tools_list()),
@@ -1193,6 +1201,30 @@ fn run_mcp_stdio(connect: Option<u16>) {
                 let tname = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let targs = params.get("arguments").cloned().unwrap_or(json!({}));
                 Some(call_tool(tname, &targs, connect))
+            }
+            "resources/list" => Some(json!({"resources": giscraft_core::skills::mcp_resources()})),
+            "resources/read" => {
+                let uri = req
+                    .get("params")
+                    .and_then(|p| p.get("uri"))
+                    .and_then(|u| u.as_str())
+                    .unwrap_or("");
+                if let Some(s) = giscraft_core::skills::skill_by_uri(uri) {
+                    Some(json!({
+                        "contents": [{"uri": s.uri, "mimeType": "text/markdown", "text": s.content}]
+                    }))
+                } else {
+                    let resp = json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {"code": -32002, "message": format!("Resource not found: {uri}")}
+                    });
+                    if let Ok(text) = serde_json::to_string(&resp) {
+                        let _ = writeln!(out, "{text}");
+                        let _ = out.flush();
+                    }
+                    continue;
+                }
             }
             "ping" => Some(json!({})),
             _ => {
@@ -1742,7 +1774,7 @@ mod tests {
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-        assert_eq!(tools.len(), 18);
+        assert_eq!(tools.len(), 19);
     }
 
     #[test]

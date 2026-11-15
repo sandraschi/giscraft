@@ -8,6 +8,9 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::todo)]
 
+mod chat_dock;
+mod settings_view;
+
 use eframe::egui;
 use giscraft_core::control;
 use giscraft_core::geo;
@@ -161,6 +164,9 @@ struct GisCraftApp {
     textures: HashMap<String, egui::TextureHandle>,
     control_rx: Option<std::sync::mpsc::Receiver<control::ControlRequest>>,
     last_rect: Option<egui::Rect>,
+    chat_dock: chat_dock::ChatDockState,
+    settings: settings_view::SettingsState,
+    show_llm_settings: bool,
 }
 
 /// Screen projection, shared with the web preview via `tiles`.
@@ -244,6 +250,9 @@ impl GisCraftApp {
             textures: HashMap::new(),
             control_rx,
             last_rect: None,
+            chat_dock: chat_dock::ChatDockState::default(),
+            settings: settings_view::SettingsState::default(),
+            show_llm_settings: false,
         };
         // Seed an empty project the way QGIS opens with a default basemap.
         match store::open_default() {
@@ -2292,6 +2301,26 @@ impl eframe::App for GisCraftApp {
         self.poll_control();
         self.poll_pending();
         self.poll_jump();
+        if ui.input(|input| input.modifiers.ctrl && input.key_pressed(egui::Key::J)) {
+            self.chat_dock.open = !self.chat_dock.open;
+        }
+        if self.chat_dock.busy || self.settings.scanning || self.settings.testing {
+            ui.ctx().request_repaint();
+        }
+        let chat_status = format!(
+            "Layers: {} | Center: ({:.4}, {:.4}) | Zoom: {:.1}",
+            self.layers.len(),
+            self.center_lat,
+            self.center_lng,
+            self.zoom
+        );
+        self.chat_dock.poll(&chat_status);
+        self.settings.poll(&mut self.chat_dock);
+        if self.chat_dock.open_settings_requested {
+            self.chat_dock.open_settings_requested = false;
+            self.chat_dock.maximized = false;
+            self.show_llm_settings = true;
+        }
         if ui.input(|input| input.modifiers.ctrl && input.key_pressed(egui::Key::G)) {
             self.dialog = Dialog::ZoomTo {
                 text: String::new(),
@@ -2418,6 +2447,10 @@ impl eframe::App for GisCraftApp {
                     if ui.button("Configuration...").clicked() {
                         self.show_settings = true;
                     }
+                    if ui.button("LLM & Chat Settings...").clicked() {
+                        self.show_llm_settings = true;
+                        ui.close();
+                    }
                 });
                 ui.menu_button(t(I18nKey::MenuHelp, loc), |ui| {
                     if ui.button("GISCraft Handbook & GIS Guide...").clicked() {
@@ -2428,6 +2461,18 @@ impl eframe::App for GisCraftApp {
                         self.show_about = true;
                     }
                 });
+                if ui
+                    .selectable_label(self.show_llm_settings, "LLM & Settings")
+                    .clicked()
+                {
+                    self.show_llm_settings = !self.show_llm_settings;
+                }
+                if ui
+                    .selectable_label(self.chat_dock.open, "Chat (Ctrl+J)")
+                    .clicked()
+                {
+                    self.chat_dock.open = !self.chat_dock.open;
+                }
                 ui.menu_button(t(I18nKey::MenuVector, loc), |ui| {
                     if ui.button("Add Vector Layer...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
@@ -2872,7 +2917,37 @@ impl eframe::App for GisCraftApp {
 
         // Center: map canvas. XYZ tiles under vector points; Ctrl+wheel
         // zooms to cursor (slippy zoom, QGIS muscle memory); drag pans.
+        if self.chat_dock.open {
+            let max_w = if self.chat_dock.maximized {
+                760.0
+            } else {
+                480.0
+            };
+            let default_w = if self.chat_dock.maximized {
+                620.0
+            } else {
+                360.0
+            };
+            egui::Panel::right("giscraft_chat_dock")
+                .default_size(default_w)
+                .min_size(280.0)
+                .max_size(max_w)
+                .resizable(true)
+                .show(ui, |ui| {
+                    self.chat_dock.ui(ui, &chat_status);
+                });
+        }
         egui::CentralPanel::default().show(ui, |ui| {
+            if self.show_llm_settings {
+                ui.horizontal(|ui| {
+                    if ui.button("← Zurück zur Karte").clicked() {
+                        self.show_llm_settings = false;
+                    }
+                });
+                ui.separator();
+                settings_view::ui_llm_settings(ui, &mut self.settings, &mut self.chat_dock);
+                return;
+            }
             let shown: usize = self
                 .features
                 .iter()
@@ -3844,6 +3919,9 @@ mod tests {
             textures: HashMap::new(),
             control_rx: None,
             last_rect: None,
+            chat_dock: chat_dock::ChatDockState::default(),
+            settings: settings_view::SettingsState::default(),
+            show_llm_settings: false,
         }
     }
 
