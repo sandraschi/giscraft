@@ -1,5 +1,17 @@
 # docs index
 
+## Install
+
+Tell Cursor, Claude, Antigravity, or OpenCode: **Install this.**
+
+Run this from the repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-craft.ps1
+```
+
+Installs the Windows app, the CLI, and the MCP bundle.
+
 | Doc | Contents |
 |-----|----------|
 | [ONBOARDING.md](ONBOARDING.md) | First 10 minutes: smoke, live ingest, QGIS side-by-side |

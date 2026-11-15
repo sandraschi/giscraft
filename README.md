@@ -5,6 +5,16 @@
 ![MCP stdio](https://img.shields.io/badge/MCP-stdio-purple)
 ![ArtCraft harness](https://img.shields.io/badge/ArtCraft-harness-green)
 
+## Install
+
+Tell Cursor, Claude, Antigravity, or OpenCode: **Install this.**
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-craft.ps1
+```
+
+Installs the Windows app, the CLI, and the MCP bundle.
+
 QGIS-class GIS in pure Rust: a clean-room 1:1 clone shell for QGIS muscle
 memory, with a modern core, CLI + MCP first, and no 2005 backend cruft.
 
@@ -43,7 +53,7 @@ for the native track; no accounts, no keys (Photon/Overpass/tiles are keyless).
 **Track B (reserved, not built):** ports 11253/11254 are claimed for a future
 sandraschi webapp for users who never learned QGIS. The native app needs none.
 
-## Install
+## Build from source
 
 Pre-release: building from source is currently the only path (no installer,
 no `.mcpb` yet). It takes one command chain:
