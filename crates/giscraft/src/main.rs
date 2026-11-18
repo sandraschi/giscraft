@@ -8,8 +8,11 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::todo)]
 
+mod attribute_table;
+mod canvas_tiles;
 mod chat_dock;
 mod settings_view;
+mod tile_worker;
 
 use eframe::egui;
 use giscraft_core::control;
@@ -162,6 +165,11 @@ struct GisCraftApp {
     jump_rx: Option<std::sync::mpsc::Receiver<JumpResult>>,
     tile_template: String,
     textures: HashMap<String, egui::TextureHandle>,
+    /// None in headless unit fixtures. The desktop app always spawns one.
+    tile_worker: Option<tile_worker::TileWorker>,
+    /// Index into `features` for the attribute-table highlight.
+    selected_feature: Option<usize>,
+    show_attributes: bool,
     control_rx: Option<std::sync::mpsc::Receiver<control::ControlRequest>>,
     last_rect: Option<egui::Rect>,
     chat_dock: chat_dock::ChatDockState,
@@ -248,6 +256,9 @@ impl GisCraftApp {
             jump_rx: None,
             tile_template: tiles::tile_url_template(),
             textures: HashMap::new(),
+            tile_worker: Some(tile_worker::TileWorker::spawn()),
+            selected_feature: None,
+            show_attributes: false,
             control_rx,
             last_rect: None,
             chat_dock: chat_dock::ChatDockState::default(),
@@ -282,6 +293,16 @@ impl GisCraftApp {
     }
 
     fn refresh(&mut self) {
+        let pinned = self.selected_feature.and_then(|idx| {
+            self.features.get(idx).map(|f| {
+                (
+                    f.layer_id.clone(),
+                    f.name.clone(),
+                    f.lng.to_bits(),
+                    f.lat.to_bits(),
+                )
+            })
+        });
         match store::open_default() {
             Ok(conn) => {
                 match store::list_layers(&conn) {
@@ -316,6 +337,14 @@ impl GisCraftApp {
             }
             Err(e) => self.push_log(format!("db open failed: {e}")),
         }
+        self.selected_feature = pinned.and_then(|(layer, name, lng_bits, lat_bits)| {
+            self.features.iter().position(|f| {
+                f.layer_id == layer
+                    && f.name == name
+                    && f.lng.to_bits() == lng_bits
+                    && f.lat.to_bits() == lat_bits
+            })
+        });
     }
 
     fn is_visible(&self, layer_id: &str) -> bool {
@@ -466,7 +495,7 @@ impl GisCraftApp {
     /// Points: within 12px (cos-corrected). Lines: within 12px of any
     /// segment. Polygons: inside, or within 12px of an edge.
     /// (The zoom-to-cursor helper `zoom_to` follows in this same impl.)
-    fn pick_at(&self, pos: egui::Pos2, rect: &egui::Rect) -> Option<HitInfo> {
+    fn pick_at(&self, pos: egui::Pos2, rect: &egui::Rect) -> Option<(usize, HitInfo)> {
         if !rect.contains(pos) {
             return None;
         }
@@ -486,29 +515,29 @@ impl GisCraftApp {
             lng: f.lng,
             lat: f.lat,
         };
-        for f in self.features.iter().rev() {
+        for (index, f) in self.features.iter().enumerate().rev() {
             if !self.is_visible(f.layer_id.as_str()) {
                 continue;
             }
             match parse_geom(f) {
                 Some(Geom::Poly(ring)) => {
                     if ring.len() >= 3 && tiles::point_in_ring(glng, glat, &ring) {
-                        return Some(hit(f));
+                        return Some((index, hit(f)));
                     }
                     if near_polyline(glng, glat, &ring, true, tol) {
-                        return Some(hit(f));
+                        return Some((index, hit(f)));
                     }
                 }
                 Some(Geom::Line(line)) => {
                     if near_polyline(glng, glat, &line, false, tol) {
-                        return Some(hit(f));
+                        return Some((index, hit(f)));
                     }
                 }
                 None => {
                     let dx = (f.lng - glng) * cos_lat;
                     let dy = f.lat - glat;
                     if dx * dx + dy * dy <= tol * tol {
-                        return Some(hit(f));
+                        return Some((index, hit(f)));
                     }
                 }
             }
@@ -567,6 +596,7 @@ impl GisCraftApp {
             Err(e) => format!("db open failed: {e}"),
         };
         self.selected = None;
+        self.selected_feature = None;
         self.confirm_new = false;
         self.refresh();
         self.push_log(outcome);
@@ -1098,6 +1128,7 @@ impl GisCraftApp {
                 Ok(true) => {
                     self.push_log(format!("removed {id}"));
                     self.selected = None;
+                    self.selected_feature = None;
                     self.refresh();
                 }
                 Ok(false) => self.push_log(format!("not found: {id}")),
@@ -2107,6 +2138,7 @@ impl GisCraftApp {
                     Ok(removed) => {
                         if removed {
                             self.selected = None;
+                            self.selected_feature = None;
                             self.refresh();
                         }
                         serde_json::json!({"id": id, "removed": removed})
@@ -2331,6 +2363,9 @@ impl eframe::App for GisCraftApp {
             self.refresh();
             self.push_log("refreshed (F5)".to_string());
         }
+        if ui.input(|input| input.key_pressed(egui::Key::F6)) {
+            self.show_attributes = !self.show_attributes;
+        }
         if ui.input(|input| input.key_pressed(egui::Key::Delete)) {
             self.remove_selected();
         }
@@ -2410,6 +2445,9 @@ impl eframe::App for GisCraftApp {
                     if ui.button(t(I18nKey::LayerZoomTo, loc)).clicked() {
                         self.zoom_to_selected();
                     }
+                    if ui.button(t(I18nKey::ViewAttributeTable, loc)).clicked() {
+                        self.show_attributes = !self.show_attributes;
+                    }
                     if ui.button(t(I18nKey::LayerShowAll, loc)).clicked() {
                         self.set_all_visible(true);
                     }
@@ -2435,6 +2473,9 @@ impl eframe::App for GisCraftApp {
                     if ui.button(t(I18nKey::ViewFitData, loc)).clicked() {
                         self.fit_only = None;
                         self.fit_requested = true;
+                    }
+                    if ui.button(t(I18nKey::ViewAttributeTable, loc)).clicked() {
+                        self.show_attributes = !self.show_attributes;
                     }
                     if ui.button(t(I18nKey::ViewResetVienna, loc)).clicked() {
                         self.center_lng = 16.3738;
@@ -2697,6 +2738,15 @@ impl eframe::App for GisCraftApp {
             });
         });
 
+        if self.show_attributes {
+            egui::Panel::bottom("attribute_table")
+                .resizable(true)
+                .default_size(180.0)
+                .show(ui, |ui| {
+                    self.show_attribute_table(ui);
+                });
+        }
+
         // Left: Browser + Layers docks (QGIS default left stack)
         egui::Panel::left("browser_layers").show(ui, |ui| {
             ui.heading("Browser");
@@ -2724,6 +2774,14 @@ impl eframe::App for GisCraftApp {
                         .clicked()
                     {
                         self.selected = Some(id.clone());
+                        let layer_id = id.clone();
+                        self.selected_feature = match self.selected_feature {
+                            Some(idx) => match self.features.get(idx) {
+                                Some(feature) if feature.layer_id == layer_id => Some(idx),
+                                _ => None,
+                            },
+                            None => None,
+                        };
                     }
                 });
                 if self.selected.as_ref() == Some(&id) && ui.button("Remove selected").clicked() {
@@ -2745,6 +2803,7 @@ impl eframe::App for GisCraftApp {
                     Ok(true) => {
                         self.push_log(format!("removed {id}"));
                         self.selected = None;
+                        self.selected_feature = None;
                         self.refresh();
                     }
                     Ok(false) => self.push_log(format!("not found: {id}")),
@@ -2767,6 +2826,9 @@ impl eframe::App for GisCraftApp {
                     self.push_log("refreshed".to_string());
                 }
             });
+            if ui.button("Attribute table (F6)").clicked() {
+                self.show_attributes = !self.show_attributes;
+            }
         });
 
         // Right: Layer Styling + Processing Toolbox (QGIS default right stack)
@@ -2966,90 +3028,16 @@ impl eframe::App for GisCraftApp {
                 self.fit_requested = false;
                 self.fit_to_data(&rect);
             }
-            // XYZ underlay from the active raster layer (or the default
-            // template). Cache-first sync fetch, max 2 network misses per
-            // frame so the UI paints in progressively instead of freezing
-            // (async worker is the follow-up; see gaps).
-            let template = resolve_tile_template(&self.layers);
-            if template != self.tile_template {
-                self.tile_template = template.clone();
-                self.textures.clear();
-                self.push_log("basemap switched (cache cleared)".to_string());
-            }
-            let tile_z = (self.zoom.floor() as i64).clamp(0, 19) as u8;
-            let (wlng, nlat) =
-                unproject(rect.min, self.center_lng, self.center_lat, self.zoom, &rect);
-            let (elng, slat) =
-                unproject(rect.max, self.center_lng, self.center_lat, self.zoom, &rect);
-            match tiles::bbox_to_tiles(wlng, slat, elng, nlat, tile_z) {
-                Ok(list) => {
-                    let mut fetched = 0_usize;
-                    for t in list {
-                        let key =
-                            format!("{}:{}:{}:{}", tiles::template_key(&template), t.z, t.x, t.y);
-                        if !self.textures.contains_key(&key) && fetched >= 2 {
-                            continue;
-                        }
-                        let loaded = match self.textures.entry(key.clone()) {
-                            std::collections::hash_map::Entry::Occupied(_) => true,
-                            std::collections::hash_map::Entry::Vacant(slot) => {
-                                fetched += 1;
-                                match tiles::fetch_tile_png_as(t, &template)
-                                    .and_then(|png| tiles::decode_png_rgba(&png))
-                                {
-                                    Ok((w, h, rgba)) => {
-                                        let img = egui::ColorImage::from_rgba_unmultiplied(
-                                            [w as usize, h as usize],
-                                            &rgba,
-                                        );
-                                        let handle = ui.ctx().load_texture(
-                                            format!("tile_{}_{}_{}", t.z, t.x, t.y),
-                                            img,
-                                            egui::TextureOptions::LINEAR,
-                                        );
-                                        slot.insert(handle);
-                                        true
-                                    }
-                                    Err(fetch_err) => {
-                                        self.status = format!("tile {fetch_err}");
-                                        false
-                                    }
-                                }
-                            }
-                        };
-                        if !loaded {
-                            continue;
-                        }
-                        if let Some(handle) = self.textures.get(&key) {
-                            let (x0, y0, x1, y1) = tiles::tile_bounds(t);
-                            let a =
-                                project(x0, y1, self.center_lng, self.center_lat, self.zoom, &rect);
-                            let b =
-                                project(x1, y0, self.center_lng, self.center_lat, self.zoom, &rect);
-                            painter.image(
-                                handle.id(),
-                                egui::Rect::from_min_max(a, b),
-                                egui::Rect::from_min_max(
-                                    egui::Pos2::ZERO,
-                                    egui::Pos2::new(1.0, 1.0),
-                                ),
-                                egui::Color32::WHITE,
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    self.status = format!("tiles: {e}");
-                }
-            }
+            self.paint_tile_underlay(ui, &painter, rect);
             // Geometry: polygons filled, lines stroked, points dotted.
             // Per-layer palette; selected layer also gets name labels.
-            for feat in &self.features {
+            for (feat_idx, feat) in self.features.iter().enumerate() {
                 if !self.is_visible(feat.layer_id.as_str()) {
                     continue;
                 }
                 let color = self.layer_draw_color(feat.layer_id.as_str());
                 let selected = self.selected.as_ref() == Some(&feat.layer_id);
+                let feature_selected = self.selected_feature == Some(feat_idx);
                 match parse_geom(feat) {
                     Some(Geom::Poly(ring)) => {
                         // Ear-clipped fill (concave-safe) + outline.
@@ -3094,6 +3082,12 @@ impl eframe::App for GisCraftApp {
                             })
                             .collect();
                         if pts.iter().any(|p| rect.contains(*p)) {
+                            if feature_selected {
+                                painter.add(egui::Shape::closed_line(
+                                    pts.clone(),
+                                    egui::Stroke::new(5.0, egui::Color32::WHITE),
+                                ));
+                            }
                             painter
                                 .add(egui::Shape::closed_line(pts, egui::Stroke::new(2.0, color)));
                         }
@@ -3113,6 +3107,12 @@ impl eframe::App for GisCraftApp {
                             })
                             .collect();
                         if pts.iter().any(|p| rect.contains(*p)) {
+                            if feature_selected {
+                                painter.add(egui::Shape::line(
+                                    pts.clone(),
+                                    egui::Stroke::new(5.0, egui::Color32::WHITE),
+                                ));
+                            }
                             painter.add(egui::Shape::line(pts, egui::Stroke::new(2.0, color)));
                         }
                     }
@@ -3130,6 +3130,13 @@ impl eframe::App for GisCraftApp {
                         }
                         painter.circle_filled(pos, 5.5, egui::Color32::WHITE);
                         painter.circle_filled(pos, 4.0, color);
+                        if feature_selected {
+                            painter.circle_stroke(
+                                pos,
+                                8.0,
+                                egui::Stroke::new(2.0, egui::Color32::WHITE),
+                            );
+                        }
                     }
                 }
                 if selected {
@@ -3255,7 +3262,7 @@ impl eframe::App for GisCraftApp {
             // and pins the details; empty click clears the selection.
             if let Some(pos) = hover {
                 if rect.contains(pos) && !resp.dragged() {
-                    if let Some(hit) = self.pick_at(pos, &rect) {
+                    if let Some((index, hit)) = self.pick_at(pos, &rect) {
                         let detail = format!("{} · {:.5}, {:.5}", hit.kind, hit.lat, hit.lng);
                         let pad = egui::Vec2::new(8.0, 6.0);
                         let w = 260.0;
@@ -3287,10 +3294,12 @@ impl eframe::App for GisCraftApp {
                         );
                         if resp.clicked() {
                             self.selected = Some(hit.layer_id);
+                            self.selected_feature = Some(index);
                             self.status = format!("{} ({})", hit.name, hit.kind);
                         }
                     } else if resp.clicked() {
                         self.selected = None;
+                        self.selected_feature = None;
                     }
                 }
             }
@@ -3917,6 +3926,9 @@ mod tests {
             jump_rx: None,
             tile_template: String::new(),
             textures: HashMap::new(),
+            tile_worker: None,
+            selected_feature: None,
+            show_attributes: false,
             control_rx: None,
             last_rect: None,
             chat_dock: chat_dock::ChatDockState::default(),
@@ -3951,7 +3963,7 @@ mod tests {
         assert!((pa.x - 400.0).abs() < 1.0 && (pa.y - 300.0).abs() < 1.0);
         let hit = app.pick_at(pa, &rect);
         assert!(hit.is_some());
-        assert_eq!(hit.map(|h| h.name), Some("A".to_string()));
+        assert_eq!(hit.map(|(_, h)| h.name), Some("A".to_string()));
         assert!(app.pick_at(egui::Pos2::new(790.0, 590.0), &rect).is_none());
         let hidden = test_app(vec![center_feature("A")], false);
         assert!(hidden.pick_at(pa, &rect).is_none());
