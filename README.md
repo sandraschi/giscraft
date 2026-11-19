@@ -46,7 +46,8 @@ for the native track; no accounts, no keys (Photon/Overpass/tiles are keyless).
 - Geocode places (Photon live, offline table of 15 cities), search the map
 - Query OpenStreetMap via fenced Overpass builder (dry-run QL or live execute)
 - Ingest hits as layers (points, lines, polygons) into the project DB
-- Render vectors over cached XYZ tiles: per-layer colors, concave fills, labels
+- Render vectors over cached XYZ tiles: per-layer colors, concave fills, labels. Tile download and PNG decode run off the UI thread.
+- Open the attribute table (F6, or View / Layer / the layers dock) for the selected layer. A row click highlights that feature.
 - Pan/zoom-to-cursor/Fit/F5, layers dock with counts, menus + shortcuts
 - Drive all of it from Claude via 9 MCP tools (same bus as the GUI)
 

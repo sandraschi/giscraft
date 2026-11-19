@@ -111,6 +111,7 @@ GISCraft is structured into a modular multi-tier workspace:
 - **Zoom**: Scroll wheel (centered at mouse cursor) or pinch-to-zoom.
 - **Fit Full View (`Ctrl+Shift+F`)**: Zooms canvas to encompass all active vector layers.
 - **Refresh (`F5`)**: Clears and re-fetches tile caches and invalidates stale geometries.
+- **Attribute table (`F6`)**: Bottom dock of the selected layer. A row click highlights that feature.
 - **Layer Control**: Click the checkbox next to any layer in the left dock to toggle visibility.
 - **Add Vector Layer**: Use `Vector -> Add Vector Layer...` to import any `.geojson` or `.csv` file.
 

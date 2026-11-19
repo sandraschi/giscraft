@@ -26,10 +26,9 @@ Our priorities are guided by the repository's core philosophy: **CLI + MCP first
   - *Current*: `processing.buffer` is exposed via MCP tool catalog (11 tools total) and CLI command `--layer-id <ID> --distance <M> --output-layer <ID>`. Forwarded to live app when connected via `--connect`.
   - *Validation*: Headless unit tests pass in core and MCP temp-DB roundtrip.
 
-- [ ] **Gap 2: Asynchronous Tile Worker (Zero UI Stutter)**
-  - *Current*: `giscraft` fetches up to 2 tiles per UI frame synchronously with a 1.5s timeout. Slow or dropped connections cause micro-stutter during rapid panning.
-  - *Action*: Move tile downloads to a decoupled background thread pool or channel (`std::sync::mpsc`). Decoded image buffers stream into an in-memory frame cache.
-  - *Validation*: Frame rate stays at locked 60 FPS while panning across cold tile regions.
+- [x] **Gap 2: Asynchronous Tile Worker (Zero UI Stutter)** [COMPLETED 2026-11-17]
+  - *Current*: Visible tiles are enqueued on `TileWorker`. The frame uploads decoded RGBA only. A blocked fetch does not stall `request()`.
+  - *Validation*: `request_returns_while_fetch_is_blocked`, cooldown, and stale-generation tests in `tile_worker.rs`.
 
 - [ ] **Gap 3: GPX Vector Importer (`import.rs`)**
   - *Current*: `import.rs` supports GeoJSON and CSV. Field GPS data (Garmin, Strava, OSM traces) comes as `.gpx` XML.
@@ -40,10 +39,9 @@ Our priorities are guided by the repository's core philosophy: **CLI + MCP first
 
 ### Tier 2: Desktop Parity & Workflow Depth
 
-- [ ] **Gap 4: Attribute Table Dock (`F6` Muscle Memory)**
-  - *Current*: Features are only inspectable via map hover tooltips or CLI `features.list`.
-  - *Action*: Pressing `F6` or selecting `Layer > Attribute Table` opens a bottom dock with a scrollable tabular view of the selected layer's features (name, kind, coords, geometry type). Clicking a row highlights the feature on the canvas.
-  - *Validation*: UI unit tests in `giscraft`.
+- [x] **Gap 4: Attribute Table Dock (`F6` Muscle Memory)** [COMPLETED 2026-11-17]
+  - *Current*: F6, View, Layer, and the layers dock open a bottom table of the selected layer (name, kind, coordinates). A row click sets `selected_feature` and draws a white highlight. Off-screen rows recenter the map.
+  - *Validation*: `rows_keep_source_index_and_skip_other_layers`. The index is the canvas highlight key.
 
 - [ ] **Gap 5: Symbology & Layer Styling Dock (`Layer > Styling`)**
   - *Current*: Layers use a deterministic 8-color FNV hash palette; users cannot customize colors, point sizes, or line widths.
