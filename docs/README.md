@@ -29,7 +29,7 @@ Installs the Windows app, the CLI, and the MCP bundle.
 | [gaps.md](gaps.md) | Ranked work list |
 | [TODO.md](TODO.md) | Gap write-ups with validation criteria |
 | [PRD.md](PRD.md) | Product goals (goals are marked as goals) |
-| [assessment-2026-11-12-fable.md](assessment-2026-11-12-fable.md) | Current assessment: audience, QoL, conformance, lens design |
+| [assessment-2026-11-12-fable.md](assessment-2026-11-12-fable.md) | Assessment as of 2026-11-12. The tile worker and F6 table landed 2026-11-17; see TIERED_PLAN |
 | [PHASE0-foundations.md](PHASE0-foundations.md) | Phase 0 design: honesty fixes (done) and store foundations |
 | [archive/](archive/) | Superseded assessments (2026-10-24 to 2026-11-08) |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Setup, recipes, gates |
