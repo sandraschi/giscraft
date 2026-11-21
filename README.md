@@ -1,15 +1,36 @@
-# GISCraft
-
-Clean-room QGIS-style desktop GIS workstation and spatial processing engine in pure Rust, unifying a native map canvas, SQLite project storage, CLI, and stdio MCP server.
+# giscraft
 
 ![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)
 ![Rust 1.90+](https://img.shields.io/badge/rust-1.90%2B-orange?logo=rust)
 ![MCP stdio](https://img.shields.io/badge/MCP-stdio-purple)
 ![ArtCraft harness](https://img.shields.io/badge/ArtCraft-harness-green)
 
+## Install
+
+Tell Cursor, Claude, Antigravity, or OpenCode: **Install this.**
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-craft.ps1
+```
+
+Installs the Windows app and the CLI (Start Menu shortcut, CLI on the user PATH). `-RegisterClients` also registers the MCP exe with the IDEs that are installed. `-Clients cursor,claude-desktop` limits that list. `-Mcpb` installs the Claude Desktop extension bundle.
+
+QGIS-class GIS in pure Rust: a clean-room 1:1 clone shell for QGIS muscle
+memory, with a modern core, CLI + MCP first, and no 2005 backend cruft.
+
+**What for:** a workbench for asking questions of the world's free map
+(OpenStreetMap) and keeping the answers as your own map layers - scout
+locations, audit POIs, plan walks and hikes, verify what's really there.
+Type a question, get a layer, analyze it, export it - by hand or via an
+AI agent (MCP). Full picture: [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md).
+
 ## What this wraps
 
-Wraps **[QGIS](https://qgis.org)** (LTR 3.44) muscle memory—menus, shortcuts (`F5`, `F6`, `Ctrl+G`, `Ctrl+0`), Browser & Layers docks, and canvas behavior—in a clean-room pure-Rust workstation. No QGIS code ships here and none is needed to run; see [docs/WRAPPEE.md](docs/WRAPPEE.md) and [docs/plugins.md](docs/plugins.md).
+**[QGIS](https://qgis.org)** (LTR 3.44), the free and open-source desktop GIS
+- the reference our menus, docks, canvas behavior and shortcuts are cloned
+from, black-box. No QGIS code ships here and none is needed to run. Full
+picture: [docs/WRAPPEE.md](docs/WRAPPEE.md). Our plugin answer vs
+[plugins.qgis.org](https://plugins.qgis.org/): [docs/plugins.md](docs/plugins.md).
 
 ## Preview
 
@@ -18,61 +39,86 @@ Wraps **[QGIS](https://qgis.org)** (LTR 3.44) muscle memory—menus, shortcuts (
 
 ## What You Can Do
 
-**How it runs:** Native `egui` workstation (`giscraft`), CLI, and pure-stdio MCP server (`giscraft-mcp`) sharing one typed command bus backed by a self-contained SQLite project database (`giscraft.db`). Zero listening ports on the native track and zero API keys required.
+**How it runs**: native egui app + CLI + MCP server over stdio, one shared
+command bus. SQLite project file *is* the project (our `.qgz`). Zero ports
+for the native track; no accounts, no keys (Photon/Overpass/tiles are keyless).
 
-- **Navigate & Geocode (`Ctrl+G`):** Pan, scroll-zoom at cursor, jump to coordinates (`lat, lng`), or geocode via the 15-city offline index and keyless Photon API.
-- **Harvest OpenStreetMap:** Query OSM via the fenced Overpass builder (dry-run QL or live execution) and ingest points, lines, and polygons as project layers.
-- **Import & Export Layers:** Load local `.geojson` vector layers and `.csv` delimited text layers, and export any layer as RFC 7946 GeoJSON.
-- **Off-Thread Tiles & Styling:** Render vectors over cached OSM XYZ basemap tiles with per-layer colors, concave fills, and labels without blocking the UI thread.
-- **Attribute Table (`F6`) & Processing:** Inspect features in the Attribute Table dock (click a row to highlight on canvas) and run geodesic buffers, grids, or hub lines.
-- **AI Spatial Advisor (`Ctrl+J`) & Help Center:** Press `Ctrl+J` for the built-in LLM chat dock with confirmation gates for mutating tools, `Ctrl+Shift+P` / `Ctrl+K` for the Command Palette, and drive all 10 MCP tools from Claude or Cursor.
+- Geocode places (Photon live, offline table of 15 cities), search the map
+- Query OpenStreetMap via fenced Overpass builder (dry-run QL or live execute)
+- Ingest hits as layers (points, lines, polygons) into the project DB
+- Render vectors over cached XYZ tiles: per-layer colors, concave fills, labels
+- Pan/zoom-to-cursor/Fit/F5, layers dock with counts, menus + shortcuts
+- Drive all of it from Claude via 9 MCP tools (same bus as the GUI)
 
-## Install
+**Track B (reserved, not built):** ports 11253/11254 are claimed for a future
+sandraschi webapp for users who never learned QGIS. The native app needs none.
 
-1. Download **`giscraft-0.2.1-setup.exe`** from the [latest release](https://github.com/sandraschi/giscraft/releases/latest) (when published; pre-release builds can also be installed from a local checkout below).
-2. Run the installer (if Windows SmartScreen appears on an unsigned build, choose **More info > Run anyway**).
-3. Launch **GISCraft** from the Start menu.
+## Build from source
 
-**Only want the MCP tools in Claude Desktop?** Download `giscraft-0.2.1.mcpb` from the same release and open it with Claude Desktop (this registers the MCP server only and does **not** install the desktop app):
-
-> Install the giscraft MCP extension: download `giscraft-0.2.1.mcpb` from https://github.com/sandraschi/giscraft/releases/latest and open it with Claude Desktop.
-
-**From a local checkout (Windows app, CLI, and MCP bundle):**
+Pre-release: building from source is currently the only path (no installer,
+no `.mcpb` yet). It takes one command chain:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-craft.ps1
+winget install Rustlang.Rustup
+# + "Desktop development with C++" (MSVC linker, required on Windows)
+cargo run -p giscraft --
 ```
 
-For manual Claude Desktop configuration, prerequisites, and source builds, see [INSTALL.md](INSTALL.md) and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Everything else - Claude Desktop wiring, env vars, verification prompt -
+is in [INSTALL.md](INSTALL.md). Developers: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Example Prompts
 
-> "Search for Stephansplatz and show it on the map."
+> "Search for Stephansplatz and show it on the map"
+> *(geocode.search, offline city table or live with `--live`)*
 
-> "Find all pharmacies in Vienna's 1st district via Overpass and ingest them as a layer."
+> "Find all pharmacies in Vienna's 1st district and ingest them as a layer"
+> *(overpass.query key=amenity value=pharmacy + bbox, `--live --ingest`)*
 
-> "List the project layers with feature counts and export the pharmacy layer as GeoJSON."
+> "List the project layers with feature counts"
+> *(layer.list - sources, geometry, visibility, counts)*
 
 ## Documentation
 
 | Doc | Contents |
 |-----|----------|
-| [Help Manual](HELP.md) | 5-step tour, shortcuts (`F5`, `F6`, `Ctrl+G`, `Ctrl+J`), spatial workflows |
-| [Installation](INSTALL.md) | All install methods, prerequisites, verification prompt |
-| [Onboarding](docs/ONBOARDING.md) | First run, keyless APIs, smoke test |
-| [Wrapped App](docs/WRAPPEE.md) | QGIS overview, official links, community |
-| [Architecture](docs/ARCHITECTURE.md) | L1/L2/L3 crates, command bus, SQLite project DB |
-| [Configuration](docs/CONFIGURATION.md) | Environment variables and config options |
+| [Installation](INSTALL.md) | All install methods, prerequisites |
+| [Onboarding](docs/ONBOARDING.md) | First run: QGIS side-by-side, keyless APIs, smoke test |
+| [Wrapped app](docs/WRAPPEE.md) | QGIS: what it is, official links, community |
+| [Plugin strategy](docs/plugins.md) | Why MCP tools are our plugin system |
+| [Architecture](docs/ARCHITECTURE.md) | L1/L2/L3, command bus, DB-as-project, stdio framing |
+| [Configuration](docs/CONFIGURATION.md) | Env vars, config options |
 | [Tool Reference](docs/TOOLS.md) | All 10 MCP tools |
-| [Development](docs/DEVELOPMENT.md) | Source setup, recipes, and test gates |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
-| [Docs Folder](docs/) | Glossary, parity checklists, and ecosystem notes |
+| [Glossary](docs/GLOSSARY.md) | Plain-language terms: bbox, Overpass, tiles, CRS, ODbL... |
+| [Parity target](docs/target-app-parity.md) | QGIS scope, oracle loop |
+| [UI parity](docs/ui-parity.md) | Measured checklist vs running QGIS |
+| [Development](docs/DEVELOPMENT.md) | Setup, recipes, gates |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues |
+| [Assessment](docs/assessment-2026-11-12-fable.md) | Current assessment; older ones in docs/archive |
 
 ## Requirements
 
-- Windows 10/11 64-bit (primary target)
-- No accounts, no API keys, no Docker (optional internet access for live Photon/Overpass/OSM tiles)
+Windows 10/11 64-bit (primary), Rust stable via rustup, MSVC linker
+("Desktop development with C++"). No accounts, no API keys, no Docker.
 
 ## License
 
-MIT OR Apache-2.0. QGIS itself is GPLv2+ and not included; map tiles (c) OpenStreetMap contributors (ODbL). Adapted from the Storytold ArtCraft pattern ([storytold/artcraft](https://github.com/storytold/artcraft)).
+MIT OR Apache-2.0. QGIS itself is GPLv2+ and not included; map tiles
+(c) OpenStreetMap contributors (ODbL) - attribution shown in-app.
+
+## Status - does today / next week / non-goals
+
+**Does today:** 5 crates + xtask; 25 docs files; 133 test fns; justfile;
+clone-shell GUI (QGIS muscle memory) + headless MCP/CLI (9 tools);
+`--smoke` BMP map preview; keyless Photon/Overpass, offline city table.
+
+**Next week:** 3 democraft recipes (geocode-layer, overpass-fenced,
+render-preview); travelcraft boundary paragraph; live-service
+version/rate pinning.
+
+**Non-goals:** not full QGIS parity (shell only, on purpose); web track
+reserved, not built.
+
+## Lineage - the Storytold craft-app pattern
+
+Storytold ArtCraft ([storytold/artcraft](https://github.com/storytold/artcraft) - "the IDE for artists") was the starting point. The 16 craft apps in the Storytold stable each ship one binary that is both the human CLI and the agent MCP server (stdio), headless-first, with `run.json` + report artifacts. That modus operandi and harness is what this repo implements; the code here is independent, the pattern is shared.
