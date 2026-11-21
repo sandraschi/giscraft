@@ -57,6 +57,19 @@ if (Test-Path -LiteralPath $fleetConfigPath) {
         }
     }
 }
+if ($cfg.Floor) {
+    $floorScript = Join-Path $RepoRoot 'scripts\craft-floor.ps1'
+    if (-not (Test-Path -LiteralPath $floorScript)) {
+        Write-Host "[$($cfg.Name)] Floor is on but scripts\craft-floor.ps1 is missing" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "[$($cfg.Name)] craft floor..." -ForegroundColor Cyan
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $floorScript -RepoRoot $RepoRoot
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[$($cfg.Name)] craft floor failed. The window stays closed." -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+}
 Set-Location -LiteralPath $RepoRoot
 if ($null -eq $Rest) { $Rest = @() }
 $mode = if ($Release) { 'release' } else { 'debug' }

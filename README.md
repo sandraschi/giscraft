@@ -37,11 +37,13 @@ Wraps **[QGIS](https://qgis.org)** (LTR 3.44) muscle memory—menus, shortcuts (
 
 > Install the giscraft MCP extension: download `giscraft-0.2.1.mcpb` from https://github.com/sandraschi/giscraft/releases/latest and open it with Claude Desktop.
 
-**From a local checkout (Windows app, CLI, and MCP bundle):**
+**From a local checkout (Windows app and CLI):**
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-craft.ps1
 ```
+
+Installs the Windows app and the CLI (Start Menu shortcut, CLI on the user PATH). `-RegisterClients` also registers the MCP exe with the IDEs that are installed. `-Clients cursor,claude-desktop` limits that list. `-Mcpb` installs the Claude Desktop extension bundle.
 
 For manual Claude Desktop configuration, prerequisites, and source builds, see [INSTALL.md](INSTALL.md) and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 

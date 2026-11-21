@@ -49,8 +49,8 @@ does it today and a test or gate proves it. Open work lives in `docs/gaps.md` an
 - [x] egui canvas: pan, wheel/Ctrl+wheel/pinch map zoom, tile underlay, scale bar, north arrow.
 - [x] Layer dock with visibility and color; identify on hover and click; Go to place (Ctrl+G).
 - [x] File pickers for import/export; processing toolbox dock; 7-locale menu strings.
-- [ ] Async tile worker (today: 2 synchronous fetches per frame) (0.5 day).
-- [ ] Attribute table dock (F6) (1 day).
+- [x] Async tile worker (the frame uploads decoded textures; fetch runs off the UI thread).
+- [x] Attribute table dock (F6) (name, kind, coordinates; row click highlights the feature).
 - [ ] Symbology: point size, stroke, opacity, categorized and graduated (1-2 days).
 - [ ] Undo/redo for layer and feature edits (1 day).
 - [ ] Drag and drop files; recent projects; project files instead of one implicit DB (1 day).
@@ -98,6 +98,7 @@ so speech in (L5) may not need a separate STT engine: test before choosing speec
 1. Tier 0 (0.5 day).
 2. Lens L1 to L4 (4 days), in parallel with nothing else in giscraft sources.
 3. Tier 4 (2-3 days), starting with the `main.rs` split.
-4. Tier 3 QoL: async tiles, error toasts, attribute table.
+4. Tier 3 QoL still open: error toasts, undo, drag-and-drop, recent projects.
+   Async tiles and the F6 attribute table landed 2026-11-17.
 5. Tier 2 PNG export, Tier 1 GPX.
 6. Lens L5 to L8.
