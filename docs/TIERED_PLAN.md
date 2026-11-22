@@ -49,8 +49,8 @@ does it today and a test or gate proves it. Open work lives in `docs/gaps.md` an
 - [x] egui canvas: pan, wheel/Ctrl+wheel/pinch map zoom, tile underlay, scale bar, north arrow.
 - [x] Layer dock with visibility and color; identify on hover and click; Go to place (Ctrl+G).
 - [x] File pickers for import/export; processing toolbox dock; 7-locale menu strings.
-- [ ] Async tile worker (today: 2 synchronous fetches per frame) (0.5 day).
-- [ ] Attribute table dock (F6) (1 day).
+- [x] Async tile worker (the frame uploads decoded textures; fetch runs off the UI thread).
+- [x] Attribute table dock (F6) (name, kind, coordinates; row click highlights the feature).
 - [ ] Symbology: point size, stroke, opacity, categorized and graduated (1-2 days).
 - [ ] Undo/redo for layer and feature edits (1 day).
 - [ ] Drag and drop files; recent projects; project files instead of one implicit DB (1 day).
@@ -78,13 +78,13 @@ catalog and never opens the photo; it gets replaced, not extended.
 | Step | Work | Days |
 |---|---|---|
 | L1 | DONE 2026-11-14: `D:\Dev\repos\lenscraft` (`lenscraft-core` + `lenscraft-mcp`), photo in, ranked candidates with evidence out, verdict + basis, 27 tests, live-tested | 1 |
-| L2 | Label-first path (photo of the wall label), venue narrowing from position, grounding from Wikidata and Wikipedia, long-form analysis in 30 s / 3 min / 10 min lengths with sourced facts marked | 1 |
-| L3 | Speech out: sentence-streamed TTS. Decide speech-mcp (:10909, running) vs speechcraft after checking what speechcraft really does | 0.5-1 |
-| L4 | `lens-server` on Goliath behind `tailscale serve`; home-screen web page with camera, mic, location, compass for iPhone and GPD; put the iPhone on the tailnet | 1 |
-| L5 | Speech in: push-to-talk questions, follow-ups grounded in the identified work, barge-in | 1 |
-| L6 | travelcraft tab switches to `lens-core`; journal keeps photo, position, transcript | 0.5 |
-| L7 | giscraft bearing lens: position + heading ray-cast against OSM buildings; venue polygons | 1 |
-| L8 | Collection packs: per-museum image embeddings from Wikidata/Commons (KHM first) for nearest-neighbour matching | 2 |
+| L2 | DONE 2026-11-22: label-first mode, Overpass venue narrowing, Wikidata/Wikipedia grounding, 30s/3m/10m analysis with sourced fact verification | 1 |
+| L3 | DONE 2026-11-22: sentence-streamed TTS via `speech-mcp` (`:10909`) | 0.5-1 |
+| L4 | DONE 2026-11-22: `lens-server` (port `11265`) + mobile web UI + `scripts/tailscale-serve.ps1` | 1 |
+| L5 | DONE 2026-11-22: push-to-talk STT (`speech-mcp`), grounded follow-up Q&A (`qa.rs`), web UI barge-in | 1 |
+| L6 | PARTIAL 2026-11-22: `travelcraft-core/src/lens.rs` updated for L2 grounding/explain + L5 Q&A; egui tab UI polish open | 0.5 |
+| L7 | DONE 2026-11-22: `giscraft-core/src/bearing_lens.rs` position + heading ray-cast against OSM building footprints | 1 |
+| L8 | DONE 2026-11-22: `lenscraft-core/src/collection.rs` Wikidata SPARQL pack builder (KHM `Q95569` default) + 24-dim spatial color signature matcher | 2 |
 
 Lens is usable in a museum after L4 (about 4 days). L5 to L8 raise quality.
 
@@ -98,6 +98,7 @@ so speech in (L5) may not need a separate STT engine: test before choosing speec
 1. Tier 0 (0.5 day).
 2. Lens L1 to L4 (4 days), in parallel with nothing else in giscraft sources.
 3. Tier 4 (2-3 days), starting with the `main.rs` split.
-4. Tier 3 QoL: async tiles, error toasts, attribute table.
+4. Tier 3 QoL still open: error toasts, undo, drag-and-drop, recent projects.
+   Async tiles and the F6 attribute table landed 2026-11-17.
 5. Tier 2 PNG export, Tier 1 GPX.
 6. Lens L5 to L8.

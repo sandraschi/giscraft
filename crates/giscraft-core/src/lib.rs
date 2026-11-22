@@ -10,6 +10,7 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::todo)]
 
+pub mod bearing_lens;
 pub mod control;
 pub mod doppler;
 pub mod error;
