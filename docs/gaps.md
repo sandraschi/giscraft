@@ -22,6 +22,8 @@ DONE:
 - Overpass retries (3 attempts, backoff) on 502/503/429/timeouts; public-API flakiness no longer kills a demo.
 - Canvas chrome: scale bar (nice 1/2/5 m/km), north arrow, per-layer color dots in dock, live `1:N + bar` readout.
 - `just dist`: the three release exes as plain files, a launcher-only `-portable.zip` of the same exes, and `SHA256SUMS.txt` in `dist/`.
+- Async tile worker: the canvas enqueues XYZ misses and paints decoded textures. It does not fetch on the UI thread.
+- Attribute table (F6, View, Layer, layers dock): selected layer's features, row click highlights that feature.
 - Plugin reimplementations shipped: QuickWKT -> `wkt.show` (paste WKT -> layer + fit, single + multi, 2D), Lat Lon Tools zoom -> Plugins "Zoom to coordinates" (`geo::parse_latlng`, N/S/E/W; copy-coords still open), QGIS "Create grid" -> `processing.grid` (rect/hex, 10k cap), NNJoin -> `processing.nearest` (hub lines with distances), Shape Tools -> `processing.geodesic` (true-distance circle/ellipse/line), single-symbol color -> `layer.color` (#rrggbb per layer, styled in dock/canvas/preview/web), colsto geolocation -> `doppler.locate` MVP (offline curve-vs-track rank -> scored layer; no 920s gap filter yet).
 
 NEXT (in sequence):
@@ -34,8 +36,7 @@ NEXT (in sequence):
 7. Field mode: photo attachments on features (walk-and-photograph crossconnect).
 8. Print Layout export PNG.
 9. OSM Austria PBF bulk loader.
-10. Async tile worker (replace 2-fetch/frame sync cap).
-11. Unify app + web BMP blit loops (math is shared; only the pixel-pushing differs - low priority).
+10. Unify app + web BMP blit loops (math is shared; only the pixel-pushing differs - low priority).
 
 PLUGIN BACKLOG (capability, not code - per docs/plugins.md each lands as
 Command + MCP tool + CLI + real menu action; never vendor a plugin):

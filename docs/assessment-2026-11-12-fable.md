@@ -1,5 +1,10 @@
 # giscraft assessment - 2026-11-12 (Claude Fable 5.2)
 
+**Superseded in part, 2026-11-17:** the synchronous 2-per-frame tile fetch and the missing
+attribute table are done. The canvas fetches tiles on a background worker. F6 lists the selected
+layer (name, kind, coordinates) and a row click highlights that feature. There is still no filter,
+sort, or extra property columns. The rest of this page is the 2026-11-12 reading.
+
 Scope: who it is for, use cases, QoL, esthetics, craft-standard conformance, gaps, ideas, and the
 "lens" (museum) scenario incl. speech and iPhone. Basis: code and docs read on Goliath on 2026-11-12.
 Not done: the app was not launched or screenshotted for this pass, so esthetics are judged from code.
@@ -113,7 +118,7 @@ the admiral-pager chassis can follow once the flow is proven.
 ## 12. Suggested order (AI-assisted days)
 - Day 1: truth pass: PRD/TIERED_PLAN vs gaps.md, geocode fake, help text, commit or drop the dirty files.
 - Days 2-3: Tier 4: bookend menus, help suite with command palette, light theme, UI zoom, fonts.
-- Day 4: async tile worker, PNG export, GPX import.
+- Day 4: PNG export, GPX import. The async tile worker landed 2026-11-17.
 - Lens day 1: real identify in a shared lens crate: image in, Ollama vision, candidates out.
 - Lens day 2: grounding + long-form analysis + streamed TTS.
 - Lens day 3: lens server + home-screen web page over tailscale serve (iPhone and GPD).
