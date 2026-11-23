@@ -1,0 +1,57 @@
+# VENDORED from mcp-central-docs/templates/craft-app/deny.toml
+# Standard: storytold/craft-contrib/standards/licences.md (22-SPDX allowlist + unmodified MPL-2.0)
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+db-urls = ["https://github.com/rustsec/advisory-db"]
+unmaintained = "warn"
+yanked = "warn"
+ignore = []
+
+[licenses]
+version = 2
+confidence-threshold = 0.93
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "Bitstream-Vera",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC-BY-4.0",
+    "CC-BY-SA-4.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "IJG",
+    "ISC",
+    "LicenseRef-Public-Domain",
+    "MIT",
+    "MPL-2.0",
+    "NCSA",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    "https://github.com/storytold/craft-libs",
+    "https://github.com/storytold/egui",
+    "https://github.com/storytold/winit",
+]

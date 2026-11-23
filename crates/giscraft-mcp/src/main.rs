@@ -19,7 +19,7 @@ use tokio::runtime::Runtime;
 #[derive(Parser)]
 #[command(
     name = "giscraft-mcp",
-    about = "QGIS-class GIS: 1:1 clone shell, modern Rust backend (CLI-first, MCP over stdio)"
+    about = "Pure-Rust desktop GIS workbench and spatial engine (CLI-first, MCP over stdio)"
 )]
 struct Cli {
     #[command(subcommand)]

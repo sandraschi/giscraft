@@ -15,8 +15,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-craft.ps1
 
 Installs the Windows app and the CLI (Start Menu shortcut, CLI on the user PATH). `-RegisterClients` also registers the MCP exe with the IDEs that are installed. `-Clients cursor,claude-desktop` limits that list. `-Mcpb` installs the Claude Desktop extension bundle.
 
-QGIS-class GIS in pure Rust: a clean-room 1:1 clone shell for QGIS muscle
-memory, with a modern core, CLI + MCP first, and no 2005 backend cruft.
+Pure-Rust desktop GIS workbench: clean-room spatial core with CLI + MCP first, SQLite project storage, and zero legacy runtime dependencies.
 
 **What for:** a workbench for asking questions of the world's free map
 (OpenStreetMap) and keeping the answers as your own map layers - scout
@@ -24,13 +23,9 @@ locations, audit POIs, plan walks and hikes, verify what's really there.
 Type a question, get a layer, analyze it, export it - by hand or via an
 AI agent (MCP). Full picture: [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md).
 
-## What this wraps
+## Clean-room & interoperability
 
-**[QGIS](https://qgis.org)** (LTR 3.44), the free and open-source desktop GIS
-- the reference our menus, docks, canvas behavior and shortcuts are cloned
-from, black-box. No QGIS code ships here and none is needed to run. Full
-picture: [docs/WRAPPEE.md](docs/WRAPPEE.md). Our plugin answer vs
-[plugins.qgis.org](https://plugins.qgis.org/): [docs/plugins.md](docs/plugins.md).
+GISCraft is a clean-room native Rust implementation. No external GPL/LGPL GIS code ships here and none is needed to run. It supports standard open GIS formats (GeoJSON, GeoPackage, Shapefile, `.qgz` metadata interop). Background: [docs/WRAPPEE.md](docs/WRAPPEE.md) and [docs/feature-names.md](docs/feature-names.md).
 
 ## Preview
 
