@@ -87,7 +87,7 @@ const PROJECT_DOCS: &[DocEntry] = &[
     },
     DocEntry {
         name: "docs/WRAPPEE.md",
-        summary: "QGIS reference scope and clean-room boundary",
+        summary: "Clean-room desktop GIS reference scope and boundary",
         content: include_str!("../../../docs/WRAPPEE.md"),
     },
 ];
@@ -430,7 +430,7 @@ impl HelpState {
                     ui.heading("GISCraft Licensing & Safety Guarantees");
                     ui.label("• License: Dual-licensed under MIT OR Apache-2.0.");
                     ui.label("• Zero-Panic Core: All workspace crates enforce #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo)].");
-                    ui.label("• Clean-Room QGIS Shell: No QGIS (GPLv2+) code is bundled or required.");
+                    ui.label("• Clean-Room Core: Zero GPL/LGPL/AGPL code is bundled or required.");
 
                     ui.add_space(8.0);
                     ui.heading("Map Data & External Services");
@@ -544,7 +544,7 @@ fn shortcut_row(ui: &mut egui::Ui, keys: &str, desc: &str) {
 
 fn render_get_started(ui: &mut egui::Ui) {
     ui.heading("What GISCraft Is & Does");
-    ui.label("GISCraft is a local-first, clean-room 1:1 QGIS shell and spatial processing engine written in pure Rust.");
+    ui.label("GISCraft is a local-first, clean-room desktop GIS workbench and spatial processing engine written in pure Rust.");
     ui.label("• Single-File Project DB: All layers, geometries, styles, and CRS live in one SQLite file (giscraft.db).");
     ui.label("• Keyless Open Data: Built-in Photon geocoding, Overpass OSM querying, and OpenStreetMap XYZ basemap tiles.");
     ui.label("• Unified Command Bus: Desktop GUI, --json CLI, and MCP stdio server drive the exact same spatial core.");
@@ -562,7 +562,7 @@ fn render_functions(ui: &mut egui::Ui) {
     ui.heading("5-Crate Workspace Architecture");
     ui.label("• giscraft-core: Pure-Rust GIS engine (EPSG:4326/3857 math, ear-clipping triangulation, WKT 2D, GeoJSON/CSV I/O, fenced Overpass QL, Photon geocode, geodesic buffers/grids/nearest, Doppler localization, LLM/skills/i18n).");
     ui.label("• giscraft-store: SQLite project store (layers, draw order, colors, transactional feature storage).");
-    ui.label("• giscraft-mcp: CLI (--json) and MCP 2024-11-05 stdio server exposing 18 spatial tools (+ --connect PORT live bridge).");
+    ui.label("• giscraft-mcp: CLI (--json) and MCP 2026-07-28 stdio server exposing 18 spatial tools (+ --connect PORT live bridge).");
     ui.label("• giscraft: Native egui 0.37 / eframe desktop workstation with off-thread tile worker and Ctrl+J AI chat dock.");
     ui.label("• giscraft-web: Track B axum HTTP sidecar seed sharing the same core and store.");
 

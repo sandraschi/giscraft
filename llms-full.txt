@@ -14,10 +14,12 @@ No QGIS code inside; QGIS 3.44 LTR is the black-box oracle (plan/qgis/).
 
 L1 `giscraft-core`: geo types, `Command::dispatch` (9 ids), Photon/Overpass
 clients (opt-in live), slippy tile math + cached fetch, ear-clip triangulation.
-L2 `giscraft-mcp`: CLI-first binary + MCP server (MCP 2024-11-05, hand-rolled
+L2 `giscraft-mcp`: CLI-first binary + MCP server (MCP 2026-07-28, hand-rolled
 line-delimited JSON-RPC, stdout pure). Owns SQLite persistence.
 L3 `giscraft`: egui shell, owns the DB file, Web Mercator canvas, XYZ
-tiles (2 fetches/frame, disk cache), `--smoke` headless BMP preview.
+tiles (background worker, disk cache; the frame uploads decoded textures),
+F6 attribute table (name, kind, coordinates; row click highlights the feature),
+`--smoke` headless BMP preview (that preview still fetches its own tiles).
 Store `giscraft-store`: rusqlite/bundled, layers + features(+geom_json).
 
 ## Tools (MCP + CLI)

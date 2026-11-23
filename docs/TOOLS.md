@@ -6,7 +6,7 @@ for the DB-touching tools, so there is a single writer. See
 runs headless against the project DB file.
 
 Every command is also a CLI subcommand (`--json` for agents). MCP transport:
-stdio, MCP 2024-11-05, `initialize` / `tools/list` / `tools/call` / `ping`.
+stdio, MCP 2026-07-28, `initialize` / `tools/list` / `tools/call` / `ping`.
 
 | Tool | Required | Optional | What |
 |---|---|---|---|

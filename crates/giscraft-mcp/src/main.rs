@@ -19,7 +19,7 @@ use tokio::runtime::Runtime;
 #[derive(Parser)]
 #[command(
     name = "giscraft-mcp",
-    about = "QGIS-class GIS: 1:1 clone shell, modern Rust backend (CLI-first, MCP over stdio)"
+    about = "Pure-Rust desktop GIS workbench and spatial engine (CLI-first, MCP over stdio)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -1152,7 +1152,7 @@ fn call_tool_inner(name: &str, args: &Value, connect: Option<u16>) -> Value {
     json!({"content": [{"type": "text", "text": result.to_string()}]})
 }
 
-/// Minimal MCP 2024-11-05 server over stdio. Line-delimited JSON-RPC.
+/// Minimal MCP 2026-07-28 server over stdio. Line-delimited JSON-RPC.
 /// With `connect`, the DB-touching tools run in the live app instead.
 fn run_mcp_stdio(connect: Option<u16>) {
     if let Some(port) = connect {
@@ -1191,7 +1191,7 @@ fn run_mcp_stdio(connect: Option<u16>) {
 
         let result: Option<Value> = match method {
             "initialize" => Some(json!({
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": "2026-07-28",
                 "capabilities": {"tools": {}, "resources": {"listChanged": false}},
                 "serverInfo": {"name": "giscraft-mcp", "version": env!("CARGO_PKG_VERSION")},
             })),

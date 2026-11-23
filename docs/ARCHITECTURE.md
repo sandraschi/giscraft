@@ -6,7 +6,7 @@ giscraft (eframe/egui, Track A) ─┐ in-process core calls
 giscraft-mcp CLI ─── dispatch ────────┤     Photon/Overpass clients, tiles, earcut
                                        │
 giscraft-mcp MCP (stdio) ─────────────┘
-        │  hand-rolled JSON-RPC (MCP 2024-11-05), stdout pure
+        │  hand-rolled JSON-RPC (MCP 2026-07-28), stdout pure
         ▼
 giscraft-store (SQLite): layers + features(+geom_json) + visible
         ▲ DB file IS the project (our .qgz); default ./giscraft.db
@@ -21,8 +21,10 @@ giscraft-store (SQLite): layers + features(+geom_json) + visible
   core dispatch stays hermetic so its tests need no DB.
 - **L3 `giscraft`**: egui native shell, QGIS muscle layout. Owns the DB
   file directly (open/seed/list/add/remove/visible persist). Web Mercator
-  canvas, XYZ tiles (2 fetches/frame, disk cache), `--smoke` headless
-  proof + BMP preview. `--control PORT` serves the same state over JSON-lines.
+  canvas, XYZ tiles (background worker, disk cache; the frame only uploads
+  decoded textures), F6 attribute table for the selected layer, `--smoke`
+  headless proof + BMP preview (that preview still fetches its own tiles).
+  `--control PORT` serves the same state over JSON-lines.
 - **Track B `giscraft-web` + `web/` console**: thin Axum sidecar (11254)
   re-exposing dispatch + store as REST (`/api/health|layers|features|geocode|
   overpass|preview.png`, CORS open); React+Leaflet console on 11253 (Vite dev,
