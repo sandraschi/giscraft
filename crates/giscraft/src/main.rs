@@ -2749,7 +2749,7 @@ impl eframe::App for GisCraftApp {
         if self.show_about {
             egui::Window::new("About GISCraft").show(ui.ctx(), |ui| {
                 ui.label(format!("GISCraft {}", env!("CARGO_PKG_VERSION")));
-                ui.label("QGIS-class GIS: clean-room 1:1 shell, pure-Rust core.");
+                ui.label("Desktop GIS workbench: clean-room pure-Rust spatial core.");
                 ui.label("100% Safe Rust (#![deny(clippy::unwrap_used, expect_used, panic)]).");
                 ui.label("CLI + MCP (stdio) + native egui, one command bus.");
                 ui.label(

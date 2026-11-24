@@ -107,6 +107,7 @@ pub enum I18nKey {
     ViewZoomOut,
     ViewFitData,
     ViewResetVienna,
+    ViewAttributeTable,
 
     // Docks & Panels
     DockLayers,
@@ -341,6 +342,14 @@ pub fn t(key: I18nKey, locale: AppLocale) -> &'static str {
         (I18nKey::ViewResetVienna, AppLocale::Ja) => "表示をリセット (ウィーン)",
         (I18nKey::ViewResetVienna, AppLocale::Ko) => "뷰 리셋 (비엔나)",
         (I18nKey::ViewResetVienna, AppLocale::Zh) => "重置视图 (维也纳)",
+
+        (I18nKey::ViewAttributeTable, AppLocale::En) => "Attribute table (F6)",
+        (I18nKey::ViewAttributeTable, AppLocale::De) => "Attributtabelle (F6)",
+        (I18nKey::ViewAttributeTable, AppLocale::Fr) => "Table d'attributs (F6)",
+        (I18nKey::ViewAttributeTable, AppLocale::Es) => "Tabla de atributos (F6)",
+        (I18nKey::ViewAttributeTable, AppLocale::Ja) => "属性テーブル (F6)",
+        (I18nKey::ViewAttributeTable, AppLocale::Ko) => "속성 테이블 (F6)",
+        (I18nKey::ViewAttributeTable, AppLocale::Zh) => "属性表 (F6)",
 
         // Docks
         (I18nKey::DockLayers, AppLocale::En) => "Layers",
