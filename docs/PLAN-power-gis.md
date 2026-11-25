@@ -3,6 +3,8 @@
 Status: proposed 2026-11-08. Supersedes the ordering in `docs/gaps.md` and
 `docs/TODO.md` (both stay as history; their open items are folded in below).
 
+**2026-11-17:** the snapshot below is still the 2026-11-08 reading. Two lines in it are no longer true. The canvas fetches tiles off the UI thread, and F6 opens a table of name, kind, and coordinates. Sort, filter, and real attribute columns are still the Phase 2 work described later. Do not treat the async-tile bullet in Phase 6 as open.
+
 ## Where we actually are (2026-11-08)
 
 - 18 commands, CLI + MCP + egui app + thin web console. Gates green (133 tests).
@@ -150,8 +152,8 @@ entry with its own spec, test and auto-generated dialog.
 - **QGIS users**: toolbars (Navigation, Attributes, Digitizing), box zoom,
   back/forward extents, measure tool (geodesic), **digitizing** (add/move/
   delete vertices, snapping), undo/redo from the command log, project open/
-  save-as/recent (`.gcproj` = the SQLite file), layer groups, CRS selector,
-  async tile worker (removes pan stutter, TODO gap 2).
+  save-as/recent (`.gcproj` = the SQLite file), layer groups, CRS selector.
+  Background tile fetch landed 2026-11-17 and is not part of this phase.
 - **Power users/agents**: `pipeline.run` (JSON list of steps, generalizes
   mapforge = the model builder), batch mode over many inputs, command history
   exportable as a replayable pipeline, all tools over `mcp --connect`.

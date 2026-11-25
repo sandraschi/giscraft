@@ -1,0 +1,6 @@
+GisCraft
+Copyright (c) 2026 the GisCraft contributors (sandraschi).
+Licensed under the MIT License or the Apache License, Version 2.0, at your option.
+
+GisCraft is a clean-room native Rust application in the Craft App ecosystem.
+Per-file asset provenance and licences are recorded in ATTRIBUTION.md.
