@@ -2,7 +2,7 @@
 name = "giscraft"
 version.workspace = true
 edition = "2021"
-description = "L3 native egui clone (QGIS muscle-memory shell, in-process dispatch)"
+description = "L3 native egui desktop GIS workbench (in-process command bus dispatch)"
 license = "MIT OR Apache-2.0"
 
 [[bin]]

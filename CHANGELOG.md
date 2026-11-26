@@ -1,6 +1,8 @@
 # Changelog - giscraft
 
 ## Unreleased
+- Canvas tiles fetch and decode on a background worker. The frame only uploads textures that are already decoded, so a slow tile server no longer stalls panning. Switching basemap drops in-flight results from the previous template. Failed tiles wait 2 seconds before another try.
+- Attribute table (View, Layer, the layers dock, or F6) lists the selected layer: name, kind, and coordinates. A row click highlights that feature and recenters the map when it is off screen.
 - Tier 0 truth pass: `geocode.search` with `live=false` now answers from the offline city table and returns an `offline` error for unknown places (was: a canned Stephansplatz hit). `geocode::demo_search` replaced by `offline_search`. Help text, README and PRD no longer claim features that do not exist. `docs/TIERED_PLAN.md` rewritten with proven checkboxes and a lens tier; old assessments moved to `docs/archive/`.
 
 ## 0.2.1 (2026-11-08, alpha)
