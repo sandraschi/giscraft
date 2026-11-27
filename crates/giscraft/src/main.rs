@@ -2331,6 +2331,24 @@ impl GisCraftApp {
 
 impl eframe::App for GisCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        let (wheel_y, zoom_reset) = ctx.input(|i| {
+            let ctrl = i.modifiers.ctrl || i.modifiers.command;
+            (
+                if ctrl { i.smooth_scroll_delta.y } else { 0.0 },
+                ctrl && i.key_pressed(egui::Key::Num0),
+            )
+        });
+        if wheel_y.abs() > 0.1 {
+            let step = if wheel_y > 0.0 {
+                1.1_f32
+            } else {
+                1.0 / 1.1_f32
+            };
+            ctx.set_zoom_factor((ctx.zoom_factor() * step).clamp(0.75, 2.0));
+        } else if zoom_reset {
+            ctx.set_zoom_factor(1.0);
+        }
         self.poll_control();
         self.poll_pending();
         self.poll_jump();
@@ -2827,234 +2845,244 @@ impl eframe::App for GisCraftApp {
         }
 
         // Left: Browser + Layers docks (QGIS default left stack)
-        egui::Panel::left("browser_layers").show(ui, |ui| {
-            ui.heading("Browser");
-            ui.label("XYZ Tiles / GeoPackage / PostGIS / WMS (Phase 0.1)");
-            ui.separator();
-            ui.heading("Layers");
-            let mut toggle: Option<(String, bool)> = None;
-            let mut remove_id: Option<String> = None;
-            let mut idx = 0_usize;
-            while idx < self.layers.len() {
-                let (id, name, mut visible, features) = if let Some(row) = self.layers.get(idx) {
-                    (row.id.clone(), row.name.clone(), row.visible, row.features)
-                } else {
-                    idx += 1;
-                    continue;
-                };
-                ui.horizontal(|ui| {
-                    ui.colored_label(self.layer_draw_color(&id), "●");
-                    if ui.checkbox(&mut visible, name.as_str()).changed() {
-                        toggle = Some((id.clone(), visible));
-                    }
-                    ui.label(format!("({features})"));
-                    if ui
-                        .selectable_label(self.selected.as_ref() == Some(&id), "sel")
-                        .clicked()
+        egui::Panel::left("browser_layers")
+            .resizable(true)
+            .default_size(250.0)
+            .size_range(170.0..=420.0)
+            .show(ui, |ui| {
+                ui.heading("Browser");
+                ui.label("XYZ Tiles / GeoPackage / PostGIS / WMS (Phase 0.1)");
+                ui.separator();
+                ui.heading("Layers");
+                let mut toggle: Option<(String, bool)> = None;
+                let mut remove_id: Option<String> = None;
+                let mut idx = 0_usize;
+                while idx < self.layers.len() {
+                    let (id, name, mut visible, features) = if let Some(row) = self.layers.get(idx)
                     {
-                        self.selected = Some(id.clone());
-                        let layer_id = id.clone();
-                        self.selected_feature = match self.selected_feature {
-                            Some(idx) => match self.features.get(idx) {
-                                Some(feature) if feature.layer_id == layer_id => Some(idx),
-                                _ => None,
-                            },
-                            None => None,
-                        };
+                        (row.id.clone(), row.name.clone(), row.visible, row.features)
+                    } else {
+                        idx += 1;
+                        continue;
+                    };
+                    ui.horizontal(|ui| {
+                        ui.colored_label(self.layer_draw_color(&id), "●");
+                        if ui.checkbox(&mut visible, name.as_str()).changed() {
+                            toggle = Some((id.clone(), visible));
+                        }
+                        ui.label(format!("({features})"));
+                        if ui
+                            .selectable_label(self.selected.as_ref() == Some(&id), "sel")
+                            .clicked()
+                        {
+                            self.selected = Some(id.clone());
+                            let layer_id = id.clone();
+                            self.selected_feature = match self.selected_feature {
+                                Some(idx) => match self.features.get(idx) {
+                                    Some(feature) if feature.layer_id == layer_id => Some(idx),
+                                    _ => None,
+                                },
+                                None => None,
+                            };
+                        }
+                    });
+                    if self.selected.as_ref() == Some(&id) && ui.button("Remove selected").clicked()
+                    {
+                        remove_id = Some(id.clone());
+                    }
+                    idx += 1;
+                }
+                if let Some((id, visible)) = toggle {
+                    match store::open_default()
+                        .and_then(|c| store::set_visible(&c, id.as_str(), visible))
+                    {
+                        Ok(true) => self.refresh(),
+                        Ok(false) => self.push_log(format!("not found: {id}")),
+                        Err(e) => self.push_log(format!("visible failed: {e}")),
+                    }
+                }
+                if let Some(id) = remove_id {
+                    match store::open_default().and_then(|c| store::remove_layer(&c, id.as_str())) {
+                        Ok(true) => {
+                            self.push_log(format!("removed {id}"));
+                            self.selected = None;
+                            self.selected_feature = None;
+                            self.refresh();
+                        }
+                        Ok(false) => self.push_log(format!("not found: {id}")),
+                        Err(e) => self.push_log(format!("remove failed: {e}")),
+                    }
+                }
+                if ui.button("Add OSM data...").clicked() {
+                    self.dialog = Dialog::OsmDownload {
+                        key: String::new(),
+                        value: String::new(),
+                        use_view: true,
+                    };
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("Fit data").clicked() {
+                        self.fit_requested = true;
+                    }
+                    if ui.button("Refresh (F5)").clicked() {
+                        self.refresh();
+                        self.push_log("refreshed".to_string());
                     }
                 });
-                if self.selected.as_ref() == Some(&id) && ui.button("Remove selected").clicked() {
-                    remove_id = Some(id.clone());
-                }
-                idx += 1;
-            }
-            if let Some((id, visible)) = toggle {
-                match store::open_default()
-                    .and_then(|c| store::set_visible(&c, id.as_str(), visible))
-                {
-                    Ok(true) => self.refresh(),
-                    Ok(false) => self.push_log(format!("not found: {id}")),
-                    Err(e) => self.push_log(format!("visible failed: {e}")),
-                }
-            }
-            if let Some(id) = remove_id {
-                match store::open_default().and_then(|c| store::remove_layer(&c, id.as_str())) {
-                    Ok(true) => {
-                        self.push_log(format!("removed {id}"));
-                        self.selected = None;
-                        self.selected_feature = None;
-                        self.refresh();
-                    }
-                    Ok(false) => self.push_log(format!("not found: {id}")),
-                    Err(e) => self.push_log(format!("remove failed: {e}")),
-                }
-            }
-            if ui.button("Add OSM data...").clicked() {
-                self.dialog = Dialog::OsmDownload {
-                    key: String::new(),
-                    value: String::new(),
-                    use_view: true,
-                };
-            }
-            ui.horizontal(|ui| {
-                if ui.button("Fit data").clicked() {
-                    self.fit_requested = true;
-                }
-                if ui.button("Refresh (F5)").clicked() {
-                    self.refresh();
-                    self.push_log("refreshed".to_string());
+                if ui.button("Attribute table (F6)").clicked() {
+                    self.show_attributes = !self.show_attributes;
                 }
             });
-            if ui.button("Attribute table (F6)").clicked() {
-                self.show_attributes = !self.show_attributes;
-            }
-        });
 
         // Right: Layer Styling + Processing Toolbox (QGIS default right stack)
-        egui::Panel::right("styling_processing").show(ui, |ui| {
-            ui.heading("Layer Styling");
-            if let Some(id) = self.selected.clone() {
-                let stored = self
-                    .layers
-                    .iter()
-                    .find(|l| l.id == id)
-                    .map(|l| l.color.clone())
-                    .unwrap_or_default();
-                let (r, g, b) = tiles::parse_layer_color(&stored)
-                    .unwrap_or(None)
-                    .unwrap_or_else(|| tiles::layer_color(&id));
-                let mut rgb = [r, g, b];
-                ui.label(format!("Single symbol: {id}"));
-                if ui.color_edit_button_srgb(&mut rgb).changed() {
-                    let hex = format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]);
-                    match store::open_default().and_then(|c| store::set_color(&c, &id, &hex)) {
-                        Ok(true) => {
-                            self.refresh();
-                            self.push_log(format!("color {id} -> {hex}"));
+        egui::Panel::right("styling_processing")
+            .resizable(true)
+            .default_size(280.0)
+            .size_range(200.0..=480.0)
+            .show(ui, |ui| {
+                ui.heading("Layer Styling");
+                if let Some(id) = self.selected.clone() {
+                    let stored = self
+                        .layers
+                        .iter()
+                        .find(|l| l.id == id)
+                        .map(|l| l.color.clone())
+                        .unwrap_or_default();
+                    let (r, g, b) = tiles::parse_layer_color(&stored)
+                        .unwrap_or(None)
+                        .unwrap_or_else(|| tiles::layer_color(&id));
+                    let mut rgb = [r, g, b];
+                    ui.label(format!("Single symbol: {id}"));
+                    if ui.color_edit_button_srgb(&mut rgb).changed() {
+                        let hex = format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]);
+                        match store::open_default().and_then(|c| store::set_color(&c, &id, &hex)) {
+                            Ok(true) => {
+                                self.refresh();
+                                self.push_log(format!("color {id} -> {hex}"));
+                            }
+                            Ok(false) => self.push_log("color failed: no such layer".to_string()),
+                            Err(e) => self.push_log(format!("color failed: {e}")),
                         }
-                        Ok(false) => self.push_log("color failed: no such layer".to_string()),
-                        Err(e) => self.push_log(format!("color failed: {e}")),
+                    }
+                    if !stored.is_empty() && ui.button("Reset to palette").clicked() {
+                        match store::open_default().and_then(|c| store::set_color(&c, &id, "")) {
+                            Ok(_) => {
+                                self.refresh();
+                                self.push_log(format!("color {id} reset to palette"));
+                            }
+                            Err(e) => self.push_log(format!("color failed: {e}")),
+                        }
+                    }
+                } else {
+                    ui.label("Select a layer to style its symbol color.");
+                }
+                ui.separator();
+                ui.heading("Processing Toolbox");
+                ui.text_edit_singleline(&mut self.toolbox_query);
+                ui.label("Search algorithms. Click to run (dialog opens).");
+                let query = self.toolbox_query.trim().to_lowercase();
+                let mut open: Option<Dialog> = None;
+                for (name, about) in [
+                    (
+                        "Download OSM features",
+                        "Overpass tag query into a new layer",
+                    ),
+                    (
+                        "Geocode places to layer",
+                        "Photon search into a point layer",
+                    ),
+                    ("Buffer points", "Circle polygons around selected points"),
+                    ("Create grid", "Rect or hex grid over a bbox"),
+                    ("Nearest neighbor join", "Hub lines to closest features"),
+                    ("Geodesic shape", "True-distance circle, ellipse or line"),
+                    (
+                        "Doppler locate",
+                        "Match curves to ADS-B tracks (colsto method)",
+                    ),
+                ] {
+                    if !query.is_empty()
+                        && !name.to_lowercase().contains(&query)
+                        && !about.to_lowercase().contains(&query)
+                    {
+                        continue;
+                    }
+                    if ui.button(name).clicked() {
+                        self.push_log(about.to_string());
+                        open = Some(match name {
+                            "Download OSM features" => Dialog::OsmDownload {
+                                key: "amenity".to_string(),
+                                value: "pharmacy".to_string(),
+                                use_view: true,
+                            },
+                            "Geocode places to layer" => Dialog::Geocode {
+                                query: String::new(),
+                                limit: "5".to_string(),
+                            },
+                            "Create grid" => {
+                                let (s, w, n, e) = match self.view_bbox() {
+                                    Some(b) => (
+                                        b.min_lat.to_string(),
+                                        b.min_lng.to_string(),
+                                        b.max_lat.to_string(),
+                                        b.max_lng.to_string(),
+                                    ),
+                                    None => (
+                                        "48.195".to_string(),
+                                        "16.355".to_string(),
+                                        "48.225".to_string(),
+                                        "16.395".to_string(),
+                                    ),
+                                };
+                                Dialog::Grid {
+                                    south: s,
+                                    west: w,
+                                    north: n,
+                                    east: e,
+                                    cell_size_m: "500".to_string(),
+                                    hex: false,
+                                    layer_id: "grid".to_string(),
+                                }
+                            }
+                            "Nearest neighbor join" => Dialog::Nearest {
+                                source: self.selected.clone().unwrap_or_default(),
+                                target: String::new(),
+                                output: String::new(),
+                            },
+                            "Geodesic shape" => {
+                                let (lng, lat) = match self.view_bbox() {
+                                    Some(b) => (
+                                        ((b.min_lng + b.max_lng) / 2.0).to_string(),
+                                        ((b.min_lat + b.max_lat) / 2.0).to_string(),
+                                    ),
+                                    None => ("16.3738".to_string(), "48.2082".to_string()),
+                                };
+                                Dialog::Geodesic {
+                                    shape: "circle".to_string(),
+                                    lng,
+                                    lat,
+                                    radius_m: "1000".to_string(),
+                                    major_m: "1000".to_string(),
+                                    minor_m: "500".to_string(),
+                                    bearing: "0".to_string(),
+                                    lng2: String::new(),
+                                    lat2: String::new(),
+                                    layer_id: "geodesic".to_string(),
+                                }
+                            }
+                            "Doppler locate" => Dialog::Doppler {
+                                capture: String::new(),
+                                layer_id: "doppler-hits".to_string(),
+                            },
+                            _ => Dialog::Buffer {
+                                radius_m: "500".to_string(),
+                            },
+                        });
                     }
                 }
-                if !stored.is_empty() && ui.button("Reset to palette").clicked() {
-                    match store::open_default().and_then(|c| store::set_color(&c, &id, "")) {
-                        Ok(_) => {
-                            self.refresh();
-                            self.push_log(format!("color {id} reset to palette"));
-                        }
-                        Err(e) => self.push_log(format!("color failed: {e}")),
-                    }
+                if let Some(dlg) = open {
+                    self.dialog = dlg;
                 }
-            } else {
-                ui.label("Select a layer to style its symbol color.");
-            }
-            ui.separator();
-            ui.heading("Processing Toolbox");
-            ui.text_edit_singleline(&mut self.toolbox_query);
-            ui.label("Search algorithms. Click to run (dialog opens).");
-            let query = self.toolbox_query.trim().to_lowercase();
-            let mut open: Option<Dialog> = None;
-            for (name, about) in [
-                (
-                    "Download OSM features",
-                    "Overpass tag query into a new layer",
-                ),
-                (
-                    "Geocode places to layer",
-                    "Photon search into a point layer",
-                ),
-                ("Buffer points", "Circle polygons around selected points"),
-                ("Create grid", "Rect or hex grid over a bbox"),
-                ("Nearest neighbor join", "Hub lines to closest features"),
-                ("Geodesic shape", "True-distance circle, ellipse or line"),
-                (
-                    "Doppler locate",
-                    "Match curves to ADS-B tracks (colsto method)",
-                ),
-            ] {
-                if !query.is_empty()
-                    && !name.to_lowercase().contains(&query)
-                    && !about.to_lowercase().contains(&query)
-                {
-                    continue;
-                }
-                if ui.button(name).clicked() {
-                    self.push_log(about.to_string());
-                    open = Some(match name {
-                        "Download OSM features" => Dialog::OsmDownload {
-                            key: "amenity".to_string(),
-                            value: "pharmacy".to_string(),
-                            use_view: true,
-                        },
-                        "Geocode places to layer" => Dialog::Geocode {
-                            query: String::new(),
-                            limit: "5".to_string(),
-                        },
-                        "Create grid" => {
-                            let (s, w, n, e) = match self.view_bbox() {
-                                Some(b) => (
-                                    b.min_lat.to_string(),
-                                    b.min_lng.to_string(),
-                                    b.max_lat.to_string(),
-                                    b.max_lng.to_string(),
-                                ),
-                                None => (
-                                    "48.195".to_string(),
-                                    "16.355".to_string(),
-                                    "48.225".to_string(),
-                                    "16.395".to_string(),
-                                ),
-                            };
-                            Dialog::Grid {
-                                south: s,
-                                west: w,
-                                north: n,
-                                east: e,
-                                cell_size_m: "500".to_string(),
-                                hex: false,
-                                layer_id: "grid".to_string(),
-                            }
-                        }
-                        "Nearest neighbor join" => Dialog::Nearest {
-                            source: self.selected.clone().unwrap_or_default(),
-                            target: String::new(),
-                            output: String::new(),
-                        },
-                        "Geodesic shape" => {
-                            let (lng, lat) = match self.view_bbox() {
-                                Some(b) => (
-                                    ((b.min_lng + b.max_lng) / 2.0).to_string(),
-                                    ((b.min_lat + b.max_lat) / 2.0).to_string(),
-                                ),
-                                None => ("16.3738".to_string(), "48.2082".to_string()),
-                            };
-                            Dialog::Geodesic {
-                                shape: "circle".to_string(),
-                                lng,
-                                lat,
-                                radius_m: "1000".to_string(),
-                                major_m: "1000".to_string(),
-                                minor_m: "500".to_string(),
-                                bearing: "0".to_string(),
-                                lng2: String::new(),
-                                lat2: String::new(),
-                                layer_id: "geodesic".to_string(),
-                            }
-                        }
-                        "Doppler locate" => Dialog::Doppler {
-                            capture: String::new(),
-                            layer_id: "doppler-hits".to_string(),
-                        },
-                        _ => Dialog::Buffer {
-                            radius_m: "500".to_string(),
-                        },
-                    });
-                }
-            }
-            if let Some(dlg) = open {
-                self.dialog = dlg;
-            }
-        });
+            });
 
         // Center: map canvas. XYZ tiles under vector points; Ctrl+wheel
         // zooms to cursor (slippy zoom, QGIS muscle memory); drag pans.
