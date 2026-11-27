@@ -40,16 +40,106 @@ fn ci() -> i32 {
             return code;
         }
     }
-    // layers + parity + forge are part of ci (fast, no I/O).
-    let code = layers();
-    if code != 0 {
-        return code;
+    // layers + assets + deny + parity + forge are part of ci (fast, no I/O).
+    for check in [layers, assets, deny, parity, forge] {
+        let code = check();
+        if code != 0 {
+            return code;
+        }
     }
-    let code = parity();
-    if code != 0 {
-        return code;
+    0
+}
+
+fn assets() -> i32 {
+    let out = match Command::new("git")
+        .args([
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        Ok(o) => {
+            eprintln!(
+                "xtask assets: git ls-files failed: {}",
+                String::from_utf8_lossy(&o.stderr).trim()
+            );
+            return 1;
+        }
+        Err(e) => {
+            eprintln!("xtask assets: git ls-files failed: {e}");
+            return 1;
+        }
+    };
+    let md = match std::fs::read_to_string("ATTRIBUTION.md") {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("xtask assets: cannot read ATTRIBUTION.md: {e}");
+            return 1;
+        }
+    };
+    let exts = [
+        "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "ico", "icns", "svg", "pdf",
+        "ttf", "otf", "woff", "woff2",
+    ];
+    let mut missing = Vec::new();
+    let mut count = 0usize;
+    for raw in out.stdout.split(|b| *b == 0).filter(|p| !p.is_empty()) {
+        let path = String::from_utf8_lossy(raw);
+        if path.ends_with("MANIFEST.txt") || path.ends_with(".md") || path.ends_with(".txt") {
+            continue;
+        }
+        let ext = std::path::Path::new(path.as_ref())
+            .extension()
+            .and_then(std::ffi::OsStr::to_str)
+            .map(str::to_ascii_lowercase)
+            .unwrap_or_default();
+        if path.starts_with("assets/")
+            || path.starts_with("docs/images/")
+            || exts.contains(&ext.as_str())
+        {
+            count += 1;
+            if !md.contains(&format!("`{path}`")) {
+                missing.push(path.into_owned());
+            }
+        }
     }
-    forge()
+    if missing.is_empty() {
+        println!("xtask assets: ok ({count} asset files attributed in ATTRIBUTION.md)");
+        0
+    } else {
+        eprintln!(
+            "xtask assets: {} asset(s) missing from ATTRIBUTION.md:\n  {}",
+            missing.len(),
+            missing.join("\n  ")
+        );
+        1
+    }
+}
+
+fn deny() -> i32 {
+    if !std::path::Path::new("deny.toml").exists() {
+        eprintln!("xtask deny: missing deny.toml");
+        return 1;
+    }
+    let has_deny = Command::new("cargo")
+        .args(["deny", "--version"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    if !has_deny {
+        if std::env::var_os("CI").is_some() {
+            eprintln!("xtask deny: cargo-deny not installed in CI");
+            return 1;
+        }
+        eprintln!("xtask deny: skipped (cargo-deny not installed)");
+        return 0;
+    }
+    run("cargo", &["deny", "check"])
 }
 
 fn layers() -> i32 {
@@ -169,11 +259,13 @@ fn main() {
     let op = args.get(1).map(|s| s.as_str()).unwrap_or("ci");
     let code = match op {
         "ci" => ci(),
+        "assets" => assets(),
+        "deny" => deny(),
         "layers" => layers(),
         "parity" => parity(),
         "forge" => forge(),
         _ => {
-            eprintln!("usage: xtask <ci|layers|parity|forge>");
+            eprintln!("usage: xtask <ci|assets|deny|layers|parity|forge>");
             2
         }
     };

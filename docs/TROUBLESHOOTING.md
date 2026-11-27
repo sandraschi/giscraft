@@ -6,10 +6,11 @@
 `GISCRAFT_OVERPASS_URL` / `GISCRAFT_PHOTON_URL` at it (see Configuration).
 
 ## Tiles load slowly or not at all
-**Cause**: 2 network fetches per frame by design (no UI freeze); cold cache
-on first visit to an area.
-**Fix**: pan slowly once (cache is on disk, second visit is instant), or set
-`GISCRAFT_TILES_URL` to a local mirror. Async tile worker is a gaps item.
+**Cause**: missing tiles are decoded on a background worker. A cold area
+still waits on the network. A failed tile is tried again after 2 seconds.
+The one-shot BMP preview (`--smoke`) fetches its own tiles and is not that worker.
+**Fix**: visit the area once (the cache is on disk, the next visit is instant),
+or set `GISCRAFT_TILES_URL` to a local mirror.
 
 ## `link.exe not found` on `cargo build`
 **Cause**: MSVC linker missing (Rust on Windows needs it).
