@@ -1,0 +1,5 @@
+# VENDORED from mcp-central-docs/templates/craft-app/rust-toolchain.toml
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
